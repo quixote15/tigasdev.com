@@ -50,13 +50,14 @@ export default function Home() {
             <div className="flex flex-wrap gap-4 self-center justify-center">
               {skills.map(skill => {
                 return (
-                  <div className="py-2 px-6 rounded-full border-violet-500 border-2">
+                  <div key={skill} className="py-2 px-6 rounded-full border-violet-500 border-2">
                     <label className="bg-gradient-to-r from-amber-200 via-amber-300 to-green-500 inline-block text-transparent bg-clip-text">
                       {skill}
                     </label>
                   </div>
                 )
               })}
+             
             </div>
 
             <div className="self-center">
@@ -64,8 +65,12 @@ export default function Home() {
               <h1 className="text-center text-white font-mono font-bold text-2xl">My journey as Software Engineer</h1>
             </div>
 
-            <div className="flex flex-row self-center">
-              <div className="text-2xl font-mono uppercase text-white max-w-16"> I started my JOURNEY IN it VOLUNTEERING IN A SOFTWARE HOUSE IN 2016 6</div>
+            <div className="flex flex-row grid-rows-3  justify-between items-center">
+              <label className="text-lg font-mono uppercase text-white w-1/3 max-w-[200px] mb-4"> I started my JOURNEY IN it VOLUNTEERING IN A SOFTWARE HOUSE IN 2016 6</label>
+              <img src="/images/two-arrow-down.svg" className="h-2/3 w-1/3 self-center relative top-0" />
+              <label className="text-md font-mono  text-white max-w-30 w-1/3 max-w-[300px] mb-4">
+              The first time I really came into contact with programming I was around 14 years old.  I wanted to build my own MMORPG  server to have fun with some friends and earn some bucks in the process
+              </label>
             </div>
           </div>
         </div>
