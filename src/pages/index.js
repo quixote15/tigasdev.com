@@ -1,4 +1,3 @@
-import Head from 'next/head'
 
 
 const skills = [
@@ -17,10 +16,8 @@ const skills = [
 export default function Home() {
   return (
     <div className="container w-screen">
-
-
       <main className="bg-gray-950 w-screen">
-        <div className=" h-full w-10/12 mx-auto">
+        <div className=" h-full w-10/12 max-w-3xl mx-auto">
           <div className="flex flex-col gap-4">
             <div className="self-center">
               <div className=" max-w-[150px] bg-gradient-to-r from-sky-300 indigo-700 p-1 rounded-full">
@@ -57,7 +54,7 @@ export default function Home() {
                   </div>
                 )
               })}
-             
+
             </div>
 
             <div className="self-center">
@@ -66,12 +63,46 @@ export default function Home() {
             </div>
 
             <div className="flex flex-row grid-rows-3  justify-between items-center">
-              <label className="text-lg font-mono uppercase text-white w-1/3 max-w-[200px] mb-4"> I started my JOURNEY IN it VOLUNTEERING IN A SOFTWARE HOUSE IN 2016 6</label>
+              <label className="text-lg font-mono uppercase  w-1/3 max-w-[200px] mb-4 bg-gradient-to-r from-emerald-200 to-blue-500 inline-block text-transparent bg-clip-text"> I started my JOURNEY IN it VOLUNTEERING AT A JUNIOR ENTERPRISE IN 2016.</label>
               <img src="/images/two-arrow-down.svg" className="h-2/3 w-1/3 self-center relative top-0" />
-              <label className="text-md font-mono  text-white max-w-30 w-1/3 max-w-[300px] mb-4">
-              The first time I really came into contact with programming I was around 14 years old.  I wanted to build my own MMORPG  server to have fun with some friends and earn some bucks in the process
+              <label className="text-md font-mono   max-w-30 w-1/3 max-w-[300px] mb-4 bg-gradient-to-r from-emerald-200 to-blue-500 inline-block text-transparent bg-clip-text">
+                The first time I really came into contact with programming I was around 14 years old.  I wanted to build my own MMORPG game server to have fun with some friends and earn some bucks in the process.
               </label>
             </div>
+
+            <div className='flex flex-col justify-between mt-2'>
+              <div className="flex flex-row items-center justify-around">
+                <div className='flex col '>
+                  <div className='flex flex-col px-1 pb-2 bg-white rounded-md -rotate-12' >
+                    <img src='/images/graduation-cerimony.JPG' className='w-48 h-36 mt-1' />
+                    <label className='text-dark font-nanum text-xl text-center'>Sergipe BR - 2019</label>
+                  </div>
+                </div>
+                <div className='flex flex-col w-1/2 ml-6'>
+                  <h1 className='text-xl text-blue-300  '>School</h1>
+                  <label className='text-md text-blue-300 mb-4 '>2014 - 2019</label>
+                  <label className="text-white text-md  mb-2 font-bold">
+                    I started studying at the Universidade Federal de Sergipe in Brazil
+                  </label>
+                  <label className="text-md text-white font-bold">
+                    In my early years, I explored competitive programming, web dev, AI entrepreneurship and also met great people.
+                  </label>
+                  <div className="flex flex-row gap-2 ">
+                    <div className=" bg-slate-900 p-2 rounded-md mt-4 w-26">
+                      <label className=" max-w-20 text-white text-xs text-center  text-ellipsis">
+                        I was very good at the programming contests and event competed in the first two years
+                      </label>
+                    </div>
+                    <div className="w-26 bg-slate-900 p-2 rounded-md mt-4 text-ellipsis" >
+                      <label className="max-w-20 text-white text-xs text-center ">
+                      I found the thrill of using technology to create new projects and products incredibly inspiring. This passion often kept me awake through countless nights during hackathons.
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </main>
