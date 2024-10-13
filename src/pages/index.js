@@ -72,11 +72,13 @@ export default function Home() {
 
             <div className='flex flex-col justify-between mt-2'>
               <div className="flex flex-row items-center justify-around">
-                <div className='flex col '>
+                <div className='flex flex-col '>
                   <div className='flex flex-col px-1 pb-2 bg-white rounded-md -rotate-12' >
                     <img src='/images/graduation-cerimony.JPG' className='w-48 h-36 mt-1' />
                     <label className='text-dark font-nanum text-xl text-center'>Sergipe BR - 2019</label>
                   </div>
+                  <img src='/images/arrow-up-left.svg' className='w-20 h-30 z-10 self-center relative -left-10 -top-14' />
+                  <label className="bg-gradient-to-r from-emerald-200 to-blue-500 inline-block text-transparent bg-clip-text font-bold font-mono text-lg text-right relative -top-20 mt-2 mr-3">That's Me!</label>
                 </div>
                 <div className='flex flex-col w-1/2 ml-6'>
                   <h1 className='text-xl text-blue-300  '>School</h1>
