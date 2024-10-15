@@ -147,6 +147,8 @@ export default function Home() {
 
             <ExperienceGaleryEntry experience={experiences[4]} position={'left'} />
 
+
+
           </div>
         </div>
       </main>
