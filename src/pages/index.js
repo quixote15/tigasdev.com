@@ -2,6 +2,7 @@ import { ExperienceEntry } from "@components/ ExperienceEntry"
 
 import { ExperienceRowEntry } from "@components/ ExperienceRowEntry"
 import { ExperienceGaleryEntry } from "@components/ ExperienceGaleryEntry"
+import { ExperienceGaleryEntryV2 } from "@components/ ExperienceGaleryEntryV2"
 
 const skills = [
   "Backend (NodeJS)",
@@ -54,6 +55,20 @@ const experiences = [
     paragraphs: ['I left my comfort zone and saw an opportunity to start my own project. It was a really good time.', 'It was a time of constant experimentation and a lot of work in different areas of design.', 'I learned a lot about software development, marketing, and self-management. In collaboration with talented people we designed beautiful projects.'],
     achievements: [],
     photos: [ {url:'/images/me-at-ayo.jpeg', label: 'AyoApp HQ - 2021', className: 'bg-white', width: 'object-cover', disableRotate: true},{ url: '/images/ayo.png', label: '', className: 'bg-transparent', width: 'w-30 object-scale-down', height: 'h-60 rounded-md', disableRotate: true }, {url: '/images/ayopay.png', width: 'w-10 object-fill' , height: 'h-10 rounded-full', className: 'bg-transparent', disableRotate: true}]
+  },
+   {
+    title: "Conta Azul - Swipe",
+    period: "2021-2024",
+    paragraphs: ['I worked at a startup, called Swipe, that was acquired by Conta Azul. My mission: Develop a digital banking solution that integrates with legacy ERP systems from scratch.', 'All interactions required coordinating the needs of multiple teams across a large organization. After a year of hard work, we were able to launch the product and reached a 6 billion mark of Total Payment Volume (TPV).', 'One of the best things was the colaborative mindset of the talented people I had worked closed with.'],
+    achievements: [],
+    photos: [ {url:'/images/conta-azul-con.jpeg', label: 'Azul Conf', className: 'bg-white rotate-12 w-10/12 relative left-5 -bottom-10', width: 'object-cover ', disableRotate: false}, {url: '/images/system-design.png', width: 'object-contain w-10/11 h-60 rotate-0 scale-105', className: 'bg-transparent relative -top-8', disableRotate:true}, { url: '/images/ca-bolso-screenshot-left.png', label: '', className: 'bg-transparent relative -top-40 -right-12', width: 'w-30 object-scale-down', height: 'h-60 rounded-md', disableRotate: true }]
+  },
+   {
+    title: "Today",
+    period: "",
+    paragraphs: ['I want to keep learning and growing as a software engineer. I am looking for new opportunities to work with talented people and build amazing products.', 'I have been working with Web3 projects and have been interacting with hot wallets, smart contracts, NFTs and blochain.', ],
+    achievements: [],
+    photos: []
   },
 ]
 
@@ -147,8 +162,18 @@ export default function Home() {
 
             <ExperienceGaleryEntry experience={experiences[4]} position={'left'} />
 
+            <div className="flex flex-row-reverse justify-center">
+              <img src="/images/arrow-down-blue.svg" className="h-2/3 w-1/3 self-center relative top-0" />
 
+            </div>
 
+            <ExperienceGaleryEntryV2 experience={experiences[5]} position={'right'} />
+
+            <div className="flex flex-row-reverse justify-center">
+              <img src="/images/arrow-down-orange.svg" className="h-2/3 w-1/3 mr-32 " />
+            </div>
+
+            <ExperienceGaleryEntryV2 experience={experiences[6]} position={'right'} />
           </div>
         </div>
       </main>

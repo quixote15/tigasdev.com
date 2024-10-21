@@ -20,7 +20,7 @@ export const PicturesRotator = ({photos}) => {
   }
 
   return photos.map((photo, index) => (
-      <div key={photo.url} className={clsx('flex flex-col px-1 pb-2  rounded-md mt-3', !photo.disableRotate && (index % 2 === 0 ? '-rotate-12' : 'rotate-12'), `z-${index * 10}`, photo.className || 'bg-white',  photo.disableRotate && 'rotate-0')} >
+      <div key={photo.url} className={clsx('flex flex-col px-1 pb-2 pt-1 rounded-md mt-3', `z-${index * 10}`, photo.className || 'bg-white',  photo.disableRotate && 'rotate-0')} >
           <img src={photo.url} className={clsx('', photo.height ?? 'h-36', photo.width ?? 'w-10/11' )}/>
           <label className='text-dark font-nanum text-xl text-center'>{photo.label}</label>
           {console.log(photo)}
@@ -28,7 +28,7 @@ export const PicturesRotator = ({photos}) => {
   ))
 }
 
-export const ExperienceGaleryEntry = ({experience, position}) => {
+export const ExperienceGaleryEntryV2 = ({experience, position}) => {
 
  
     return (
