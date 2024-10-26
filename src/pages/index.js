@@ -5,6 +5,7 @@ import { ExperienceGaleryEntry } from "@components/ ExperienceGaleryEntry"
 import { ExperienceGaleryEntryV2 } from "@components/ ExperienceGaleryEntryV2"
 import Footer from "@components/Footer"
 import Header from "@components/Header"
+import Layout from "@components/Layout"
 
 const skills = [
   "Backend (NodeJS)",
@@ -76,10 +77,8 @@ const experiences = [
 
 export default function Home() {
   return (
-    <div className="container w-screen">
-      <Header />
-      <main className="bg-gray-950 w-screen">
-        <div className=" h-full w-10/12 max-w-3xl mx-auto mt-10">
+    <Layout>
+        <div className="h-full w-10/12 max-w-3xl mx-auto mt-10">
           <div className="flex flex-col gap-4">
             <div className="self-center">
               <div className=" max-w-[150px] bg-gradient-to-r from-sky-300 indigo-700 p-1 rounded-full">
@@ -193,9 +192,6 @@ export default function Home() {
             </div>
           </div>
         </div>
-
-      </main>
-        <Footer />
-    </div>
+      </Layout>
   )
 }
