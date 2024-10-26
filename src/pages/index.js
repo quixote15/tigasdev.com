@@ -4,6 +4,7 @@ import { ExperienceRowEntry } from "@components/ ExperienceRowEntry"
 import { ExperienceGaleryEntry } from "@components/ ExperienceGaleryEntry"
 import { ExperienceGaleryEntryV2 } from "@components/ ExperienceGaleryEntryV2"
 import Footer from "@components/Footer"
+import Header from "@components/Header"
 
 const skills = [
   "Backend (NodeJS)",
@@ -76,8 +77,9 @@ const experiences = [
 export default function Home() {
   return (
     <div className="container w-screen">
+      <Header />
       <main className="bg-gray-950 w-screen">
-        <div className=" h-full w-10/12 max-w-3xl mx-auto">
+        <div className=" h-full w-10/12 max-w-3xl mx-auto mt-10">
           <div className="flex flex-col gap-4">
             <div className="self-center">
               <div className=" max-w-[150px] bg-gradient-to-r from-sky-300 indigo-700 p-1 rounded-full">
@@ -89,7 +91,7 @@ export default function Home() {
 
             <div className="self-center gap-2">
               <h1 className="text-2xl text-center leading-7 font-mono font-bold bg-gradient-to-r  from-grape to-light-grape text-transparent bg-clip-text">Hi. I'm Tiago Santos (Aka Tigas)</h1>
-              <h1 className="text-2xl text-center leading-7 font-mono font-bold bg-gradient-to-r  from-grape to-light-grape text-transparent bg-clip-text">A Software enginner.</h1>
+              <h1 className="text-2xl text-center leading-7 font-mono font-bold bg-gradient-to-r  from-grape to-light-grape text-transparent bg-clip-text">A Software Engineer.</h1>
             </div>
 
 
@@ -192,8 +194,8 @@ export default function Home() {
           </div>
         </div>
 
-        <Footer />
       </main>
+        <Footer />
     </div>
   )
 }

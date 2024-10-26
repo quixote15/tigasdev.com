@@ -3,8 +3,8 @@ import styles from './Footer.module.css'
 export default function Footer() {
   return (
     <>
-      <footer className="w-full h-[100px] flex justify-center items-center border-sky-300 border-t-[1px]">
-        <div className='flex flex-row gap-4'>
+      <footer className="w-screen h-60 flex justify-center items-center border-sky-300 bg-gray-950 fixed-bottom">
+        <div className='flex flex-row gap-8'>
         <a href="github.com/quixote15" target="_blank" rel="noopener noreferrer" className='bg-transparent self-center'>
           <img src='/images/github-logo.png' className="w-8 h-fit bg-transparent" />
         </a>
