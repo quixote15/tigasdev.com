@@ -39,7 +39,7 @@ export const ExperienceEntry = ({experience, position}) => {
             <h1 className='text-xl text-blue-300  '>{experience.title}</h1>
             <label className='text-md text-blue-300 mb-4 '>{experience.period}</label>
               {experience.paragraphs.map((paragraph) => (
-                    <label className="text-white text-sm  mb-2 font-bold"> {paragraph}</label>
+                    <label className="text-white text-sm  font-mono mb-2 font-bold"> {paragraph}</label>
               ) )}
             <div className="flex flex-row gap-2 ">
               {experience.achievements.map((achievement) => (

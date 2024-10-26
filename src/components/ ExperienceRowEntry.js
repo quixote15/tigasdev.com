@@ -46,7 +46,7 @@ export const ExperienceRowEntry = ({experience, position}) => {
             <h1 className='text-xl text-blue-300 text-center'>{experience.title}</h1>
             <label className='text-md text-blue-300 mb-4 text-center'>{experience.period}</label>
               {experience.paragraphs.map((paragraph) => (
-                    <label className="text-white text-sm text-center  mb-2 font-bold"> {paragraph}</label>
+                    <label className="font-mono text-white text-sm text-center  mb-2 font-bold"> {paragraph}</label>
               ) )}
             <div className="flex flex-row gap-2 ">
               {experience.achievements.map((achievement) => (

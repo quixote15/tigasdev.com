@@ -3,6 +3,7 @@ import { ExperienceEntry } from "@components/ ExperienceEntry"
 import { ExperienceRowEntry } from "@components/ ExperienceRowEntry"
 import { ExperienceGaleryEntry } from "@components/ ExperienceGaleryEntry"
 import { ExperienceGaleryEntryV2 } from "@components/ ExperienceGaleryEntryV2"
+import Footer from "@components/Footer"
 
 const skills = [
   "Backend (NodeJS)",
@@ -169,13 +170,29 @@ export default function Home() {
 
             <ExperienceGaleryEntryV2 experience={experiences[5]} position={'right'} />
 
-            <div className="flex flex-row-reverse justify-center">
-              <img src="/images/arrow-down-orange.svg" className="h-2/3 w-1/3 mr-32 " />
+            <div className="flex flex-row-reverse">
+              <img src="/images/arrow-down-orange.svg" className="h-1/3 w-1/4 mr-52 relative -top-20" />
             </div>
 
-            <ExperienceGaleryEntryV2 experience={experiences[6]} position={'right'} />
+            <div className="flex flex-col gap-2 mb-10">
+              <h1 className="text-xl text-blue-300 text-center">Today</h1>
+              <label className="text-white text-center text-md font-mono">
+                  I want to keep growing as a software engineer and human being. 
+                  <br/>
+                  I always eager to build amazing and innovative products. I have been working with Web3 projects and have been interacting with hot wallets, smart contracts, NFTs and blockchain.               
+
+                  <br/>
+                  <br/>
+
+              </label>
+              <label className="text-white font-mono text-center">
+                  "Carpe Diem is about coding and thriving. Today."
+              </label>
+            </div>
           </div>
         </div>
+
+        <Footer />
       </main>
     </div>
   )
