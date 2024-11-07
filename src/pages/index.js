@@ -6,6 +6,7 @@ import { ExperienceGaleryEntryV2 } from "@components/ ExperienceGaleryEntryV2"
 import Footer from "@components/Footer"
 import Header from "@components/Header"
 import Layout from "@components/Layout"
+import Script from "next/script"
 
 const skills = [
   "Backend (NodeJS)",
@@ -77,6 +78,8 @@ const experiences = [
 
 export default function Home() {
   return (
+    <>
+    <Script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js" strategy="beforeInteractive" />
     <Layout>
         <div className="h-full w-10/12 max-w-3xl mx-auto mt-10">
           <div className="flex flex-col gap-4">
@@ -193,5 +196,6 @@ export default function Home() {
           </div>
         </div>
       </Layout>
+    </>
   )
 }

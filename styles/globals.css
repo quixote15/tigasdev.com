@@ -42,4 +42,110 @@ code {
 
 
 
+h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background-color: #f9f9f9;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 1.5rem;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+h1 {
+  font-size: 2.5rem;
+}
+
+h2 {
+  font-size: 2rem;
+}
+
+h3 {
+  font-size: 1.75rem;
+}
+
+h4 {
+  font-size: 1.5rem;
+}
+
+h5 {
+  font-size: 1.25rem;
+}
+
+h6 {
+  font-size: 1rem;
+}
+
+p {
+  margin-bottom: 1.5rem;
+  color: #bbb;
+}
+
+a {
+  color: #a586fb;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+blockquote {
+  border-left: 4px solid #dfe2e5;
+  padding: 0.5rem 1rem;
+  color: #6a737d;
+  background-color: #f6f8fa;
+  margin: 0;
+  margin-bottom: 1.5rem;
+}
+
+code {
+  background: #e2e8f0;
+  border-radius: 5px;
+  padding: 0.2rem 0.4rem;
+  font-family: Menlo, Monaco, Lucida Console, Courier New, monospace;
+}
+
+pre {
+  background: #f6f8fa;
+  padding: 1rem;
+  border-radius: 5px;
+  overflow-x: auto;
+}
+
+ul, ol {
+  margin-bottom: 1.5rem;
+  padding-left: 2rem;
+}
+
+li {
+  margin-bottom: 0.5rem;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #eaecef;
+  margin: 2rem 0;
+}
+
+
+pre {
+  background: #2b2b2b;
+}
 
