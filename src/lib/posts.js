@@ -1,7 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import matter from 'gray-matter';
-import { remark } from 'remark';
 import showdown from 'showdown';
 import 'highlight.js/styles/night-owl.css'// Then register the languages you need
 import showdownPrettify from 'showdown-prettify';
@@ -14,7 +12,7 @@ hljs.registerLanguage('python', python);
 
 // Register the prettify extension
 showdown.extension('prettify', showdownPrettify);
-
+showdown.setFlavor('github');
 const postsDirectory = 'src/posts';
 
 export function getAllPostIds() {
