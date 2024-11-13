@@ -8,8 +8,9 @@ import showdownPrettify from 'showdown-prettify';
 import markdownit from 'markdown-it'
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
+import python from 'highlight.js/lib/languages/python';
 hljs.registerLanguage('javascript', javascript);
-
+hljs.registerLanguage('python', python);
 
 // Register the prettify extension
 showdown.extension('prettify', showdownPrettify);
