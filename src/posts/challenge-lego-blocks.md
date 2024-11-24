@@ -60,7 +60,7 @@ www.hackerrank.com
 ## Solution
 
 There is a Python solution as follows:
-```python
+```
 def legoBlocks(n, m):  
     MOD = (10**9 +7)  
     # Step 1: O(W)   
@@ -110,7 +110,7 @@ It needs 3 steps to solve this problem:
 3.  Subtract the vertically unstable cases
 
 There are two ways to understand the above step 3. The unstable can be calculated by summing each (stable*total) (**solution 1**) or calculating the result immediately by summing each (result*total) (**solution 2**). Please see Java in detail to illustrate below. Please note “Solution 1” and “Solution 2” in the comments for two solutions.
-```java
+```
 import java.io.*;  
 import java.math.*;  
 import java.security.*;  

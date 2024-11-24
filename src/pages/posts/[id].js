@@ -15,9 +15,7 @@ export default function Post({postData}) {
     }, []);
     return (
         <Layout>
-            
-            <div className="mx-auto w-10/12 shadow shadow-black drop-shadow-2xl" dangerouslySetInnerHTML={{__html: postData.contentHtml}}/>
-
+          <div className="mx-auto post-item w-10/12" dangerouslySetInnerHTML={{__html: postData.contentHtml}}/>
         </Layout>
     );
 }
