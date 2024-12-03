@@ -53,7 +53,7 @@ export const PostItem = ({title, createdAt, description,id}) => {
 export default function articles({posts}) { 
     return (
         <Layout>
-            <div className="flex flex-col gap-8 items-center mt-10 w-10/12">
+            <div className="flex flex-col gap-8 items-center h-screen  mt-10 w-10/12">
 
                 {posts.map((post) => (<PostItem key={post.id} {...post} />))}
         <div className=" border-b-[1px] border-gray-100 opacity-10 w-full"></div>
