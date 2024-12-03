@@ -17,19 +17,25 @@ showdown.extension('prettify', showdownPrettify);
 showdown.setFlavor('github');
 const postsDirectory = 'src/posts';
 
-export function getAllPostIds() {
-    const fileNames = fs.readdirSync(postsDirectory);
-    return fileNames.map((filename) => {
+export async function getAllPostIds() {
+   const posts = await getAllPosts()
+   // const fileNames = fs.readdirSync(postsDirectory);
+    const result =  posts.map((post) => {
         return  {
             params: {
-                id: filename.replace(/\.md$/, '')
+                id: post.id
             }
         }
     })
+
+    console.log(result, 'result')
+    return result
 }
 
 
 export  async function getPostData(id) {
+
+    console.log('getting post data', id)
 
     const md = markdownit({
         html: true,
@@ -51,12 +57,15 @@ export  async function getPostData(id) {
         }
     })
 
+    const post = await fetch('https://getpost-oqmhrivq7a-uc.a.run.app?id=' + id, {method: 'GET'})
+    const data = await post.json()
     const converter = new showdown.Converter({skin: 'Sunburst', lang: 'js',extensions: ['prettify'],ghCodeBlocks: true, omitExtraWLInCodeBlocks:true});
     converter.setFlavor('github');
     converter.setOption('tables', true);
-    const fullPath = path.join(postsDirectory, `${id}.md`);
+   // const fullPath = path.join(postsDirectory, `${id}.md`);
 
-    const fileContents = fs.readFileSync(fullPath, 'utf8');
+//    const fileContents = fs.readFileSync(fullPath, 'utf8');
+    const fileContents = data.content;
     const mdResult = md.render(fileContents);
 
 //    const matterResult = matter(fileContents);
@@ -72,4 +81,11 @@ export  async function getPostData(id) {
         id,
         contentHtml: mdResult,
     }
+}
+
+
+export const getAllPosts  = async () => {
+    const posts = await fetch('https://getposts-oqmhrivq7a-uc.a.run.app', {method: 'GET'})
+    const data = await posts.json()
+    return data
 }

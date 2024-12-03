@@ -22,7 +22,7 @@ export default function Post({postData}) {
 
 
 export async function getStaticPaths() {
-    const paths = getAllPostIds();
+    const paths = await getAllPostIds();
     return {
         paths,
         fallback: false // false means other routes should 404.
@@ -31,8 +31,12 @@ export async function getStaticPaths() {
 
 
 export async function getStaticProps({params}) {
+    console.log(params, 'params get post ')
     const postData = await getPostData(params.id);
-    return{
+   // const postData = await fetch('http://127.0.0.1:5001/tigasdev-154f6/us-central1/getPost?id=' + params.id).then(res => res.json());
+    console.log(postData, 'postData')
+
+    return {
         props: {
             postData
         }
