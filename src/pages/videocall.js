@@ -1,380 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
 import Layout from '@components/Layout'
+import { createVideoCallService, createVideoCallServiceWithFallback } from '../util/index.js'
+import { PeerConnectionDiagnostics } from '../util/diagnostics.js'
 
-// Video Call Business Logic
-class VideoCallBusiness {
-  constructor({ roomId, videoGridRef, setParticipantsCount, setMessages, setIsRecording }) {
-    this.roomId = roomId
-    this.videoGridRef = videoGridRef
-    this.setParticipantsCount = setParticipantsCount
-    this.setMessages = setMessages
-    this.setIsRecording = setIsRecording
-    
-    this.socket = null
-    this.peer = null
-    this.localStream = null
-    this.peers = new Map()
-    this.isRecording = false
-    this.isMuted = false
-    this.isVideoOn = true
-  }
+// Import PeerJS and Socket.IO properly
+import Peer from 'peerjs'
+import io from 'socket.io-client'
 
-  setConnectionStatus(status) {
-    console.log(`🔄 Connection status: ${status}`)
-    // You can extend this to update UI status if needed
-  }
-
-  async initialize() {
-    try {
-      console.log('🚀 Initializing video call...')
-      
-      // Set up local video with enhanced error handling
-      await this.setupLocalVideo()
-
-      console.log('🔌 Initializing connections...')
-      // Initialize socket connection
-      this.initializeSocket()
-      
-      // Initialize PeerJS
-      this.initializePeer()
-      
-    } catch (error) {
-      console.error('❌ Error initializing video call:', error)
-      throw error // Let the calling code handle the error display
-    }
-  }
-
-  initializeSocket() {
-    // Using the same socket configuration as the example
-    const socketUrl = 'http://signaling-server.tigasdev.com'
-    this.socket = io(socketUrl)
-    
-    this.socket.on('user-connected', (userId) => {
-      console.log('User connected:', userId)
-      this.connectToNewUser(userId)
-    })
-    
-    this.socket.on('user-disconnected', (userId) => {
-      console.log('User disconnected:', userId)
-      this.removeUser(userId)
-    })
-    
-    this.socket.on('chat-message', (message) => {
-      this.setMessages(prev => [...prev, message])
-    })
-  }
-
-  initializePeer() {
-    const PEERJS_KEY = 'Bkiv2sHChaglEQOr50OjlOFMEE8ObzW2URwpC00iWsY'
-    
-    this.peer = new Peer({
-      host: 'peer-server.tigasdev.com',
-      port: 80,
-      path: '/',
-      secure: false,
-      debug: 2,
-      key: PEERJS_KEY
-    })
-
-    this.peer.on('open', (id) => {
-      console.log('Peer connected with ID:', id)
-      this.socket.emit('join-room', this.roomId, id)
-    })
-
-    this.peer.on('call', (call) => {
-      call.answer(this.localStream)
-      call.on('stream', (userVideoStream) => {
-        this.addVideoStream(call.peer, userVideoStream)
-      })
-      
-      call.on('close', () => {
-        this.removeUser(call.peer)
-      })
-      
-      this.peers.set(call.peer, call)
-    })
-
-    this.peer.on('error', (error) => {
-      console.error('Peer error:', error)
-    })
-  }
-
-  connectToNewUser(userId) {
-    const call = this.peer.call(userId, this.localStream)
-    
-    call.on('stream', (userVideoStream) => {
-      this.addVideoStream(userId, userVideoStream)
-    })
-    
-    call.on('close', () => {
-      this.removeUser(userId)
-    })
-    
-    this.peers.set(userId, call)
-    this.setParticipantsCount(this.peers.size + 1)
-  }
-
-  addVideoStream(userId, stream, isLocal = false) {
-    console.log(`🎬 Adding video stream for ${isLocal ? 'local user' : userId}`)
-    
-    // Retry mechanism for video grid ref
-    const attemptAddVideo = (attempt = 1, maxAttempts = 10) => {
-      const videoGrid = this.videoGridRef.current
-      
-      if (!videoGrid) {
-        console.warn(`❌ Video grid ref not available (attempt ${attempt}/${maxAttempts})`)
-        
-        if (attempt < maxAttempts) {
-          console.log(`🔄 Retrying video grid access for ${userId} in 200ms...`)
-          setTimeout(() => attemptAddVideo(attempt + 1, maxAttempts), 200)
-          return
-        } else {
-          console.error(`❌ Video grid ref never became available for ${userId}`)
-          return
-        }
-      }
-
-      console.log(`✅ Video grid ref available, proceeding with video setup for ${userId}`)
-
-      // Check if video already exists (prevent duplicates)
-      const existingVideo = document.getElementById(userId)
-      if (existingVideo) {
-        console.log(`⚠️ Video for ${userId} already exists, removing old one`)
-        existingVideo.remove()
-      }
-
-      const videoWrapper = document.createElement('div')
-      videoWrapper.className = `relative bg-gray-800 rounded-lg overflow-hidden ${isLocal ? 'border-2 border-blue-500' : ''}`
-      videoWrapper.id = userId
-
-      const video = document.createElement('video')
-      video.srcObject = stream
-      video.autoplay = true
-      video.playsInline = true
-      video.muted = isLocal // Mute local video to prevent feedback
-      video.className = 'w-full h-full object-cover'
-      
-      // Add event listeners for debugging
-      video.addEventListener('loadstart', () => {
-        console.log(`📹 Video loadstart for ${userId}`)
-      })
-      
-      video.addEventListener('loadedmetadata', () => {
-        console.log(`📹 Video metadata loaded for ${userId}`)
-      })
-      
-      video.addEventListener('canplay', () => {
-        console.log(`📹 Video can play for ${userId}`)
-      })
-      
-      video.addEventListener('playing', () => {
-        console.log(`✅ Video started playing for ${userId}`)
-      })
-      
-      video.addEventListener('error', (e) => {
-        console.error(`❌ Video error for ${userId}:`, e)
-      })
-
-      // Enhanced video play with retry mechanism
-      const playVideo = async (attempt = 1, maxAttempts = 5) => {
-        try {
-          console.log(`▶️ Attempting to play video for ${userId} (attempt ${attempt})`)
-          
-          const playPromise = video.play()
-          if (playPromise !== undefined) {
-            await playPromise
-            console.log(`✅ Video playing successfully for ${userId}`)
-          }
-        } catch (error) {
-          console.error(`❌ Video play error for ${userId} (attempt ${attempt}):`, error)
-          
-          if (attempt < maxAttempts) {
-            console.log(`🔄 Retrying video play for ${userId} in 500ms...`)
-            setTimeout(() => playVideo(attempt + 1, maxAttempts), 500)
-          } else {
-            console.error(`❌ Video play failed for ${userId} after ${maxAttempts} attempts`)
-            
-            // Try user interaction approach for autoplay issues
-            if (error.name === 'NotAllowedError' || error.message.includes('autoplay')) {
-              console.log(`🖱️ Adding click handler for ${userId} due to autoplay policy`)
-              video.addEventListener('click', () => {
-                video.play().catch(e => console.error(`❌ Click play failed for ${userId}:`, e))
-              })
-            }
-          }
-        }
-      }
-
-      const nameLabel = document.createElement('div')
-      nameLabel.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm'
-      nameLabel.textContent = isLocal ? 'You' : userId.substring(0, 8)
-
-      videoWrapper.appendChild(video)
-      videoWrapper.appendChild(nameLabel)
-      videoGrid.appendChild(videoWrapper)
-
-      // Wait a bit for the video element to be properly attached, then try to play
-      setTimeout(() => {
-        playVideo()
-      }, 100)
-
-      // Also try again after a longer delay in case the first attempt fails
-      setTimeout(() => {
-        if (video.paused) {
-          console.log(`🔄 Video still paused for ${userId}, retrying...`)
-          playVideo()
-        }
-      }, 1000)
-
-      // Update participant count
-      this.setParticipantsCount(this.peers.size + 1)
-      
-      console.log(`✅ Video element added to DOM for ${userId}`)
-    }
-
-    // Start the attempt
-    attemptAddVideo()
-  }
-
-  removeUser(userId) {
-    const videoElement = document.getElementById(userId)
-    if (videoElement) {
-      videoElement.remove()
-    }
-    
-    if (this.peers.has(userId)) {
-      this.peers.get(userId).close()
-      this.peers.delete(userId)
-    }
-    
-    this.setParticipantsCount(this.peers.size + 1)
-  }
-
-  toggleMute() {
-    this.isMuted = !this.isMuted
-    const audioTrack = this.localStream.getAudioTracks()[0]
-    if (audioTrack) {
-      audioTrack.enabled = !this.isMuted
-      console.log(`🎤 Audio ${this.isMuted ? 'muted' : 'unmuted'}`)
-    }
-    return this.isMuted
-  }
-
-  toggleVideo() {
-    this.isVideoOn = !this.isVideoOn
-    const videoTrack = this.localStream.getVideoTracks()[0]
-    if (videoTrack) {
-      videoTrack.enabled = this.isVideoOn
-      console.log(`📹 Video ${this.isVideoOn ? 'enabled' : 'disabled'}`)
-    }
-    return this.isVideoOn
-  }
-
-  toggleRecording() {
-    this.isRecording = !this.isRecording
-    this.setIsRecording(this.isRecording)
-    // Here you would implement actual recording logic
-    console.log('Recording:', this.isRecording)
-    return this.isRecording
-  }
-
-  sendMessage(message) {
-    if (this.socket && message.trim()) {
-      const chatMessage = {
-        text: message,
-        sender: 'You',
-        timestamp: new Date().toLocaleTimeString()
-      }
-      this.socket.emit('chat-message', chatMessage)
-      this.setMessages(prev => [...prev, chatMessage])
-    }
-  }
-
-  leaveCall() {
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop())
-    }
-    
-    this.peers.forEach(call => call.close())
-    
-    if (this.socket) {
-      this.socket.disconnect()
-    }
-    
-    if (this.peer) {
-      this.peer.destroy()
-    }
-  }
-
-  async setupLocalVideo() {
-    try {
-      console.log('🎥 Setting up local video...')
-      this.setConnectionStatus('Getting camera access...')
-
-      const constraints = {
-        video: {
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          facingMode: 'user'
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      }
-
-      console.log('📋 Requesting media with constraints:', constraints)
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      
-      console.log('✅ Local media stream obtained')
-      console.log('📹 Stream details:', {
-        active: stream.active,
-        videoTracks: stream.getVideoTracks().length,
-        audioTracks: stream.getAudioTracks().length
-      })
-
-      // Log track details
-      stream.getVideoTracks().forEach((track, index) => {
-        console.log(`📹 Video Track ${index}:`, {
-          enabled: track.enabled,
-          readyState: track.readyState,
-          label: track.label,
-          settings: track.getSettings()
-        })
-      })
-
-      this.localStream = stream
-      
-      // Add local video with retry mechanism
-      this.addVideoStream('local-user', stream, true)
-      
-      this.setConnectionStatus('Connected')
-      return stream
-    } catch (error) {
-      console.error('❌ Error accessing media devices:', error)
-      
-      let errorMessage = 'Failed to access camera and microphone. '
-      
-      if (error.name === 'NotAllowedError') {
-        errorMessage += 'Permission denied. Please allow camera and microphone access and refresh the page.'
-      } else if (error.name === 'NotFoundError') {
-        errorMessage += 'No camera or microphone found. Please connect your devices and refresh the page.'
-      } else if (error.name === 'OverconstrainedError') {
-        errorMessage += 'Camera/microphone constraints not supported. Try a different device.'
-      } else if (error.name === 'NotReadableError') {
-        errorMessage += 'Camera/microphone is already in use by another application.'
-      } else if (error.name === 'SecurityError') {
-        errorMessage += 'Security error. Please ensure you\'re using HTTPS or localhost.'
-      } else {
-        errorMessage += error.message
-      }
-      
-      this.setConnectionStatus(`Error: ${errorMessage}`)
-      throw error
-    }
-  }
+// Make them globally available for the utility classes
+if (typeof window !== 'undefined') {
+  window.Peer = Peer
+  window.io = io
 }
 
 export default function VideoCall() {
@@ -389,6 +26,9 @@ export default function VideoCall() {
   const [newMessage, setNewMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [diagnostics, setDiagnostics] = useState(null)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [useFallback, setUseFallback] = useState(false)
   
   const videoGridRef = useRef(null)
   const businessRef = useRef(null)
@@ -407,22 +47,37 @@ export default function VideoCall() {
     setError('')
     
     try {
+      // Check if PeerJS and Socket.IO are available
+      if (typeof window !== 'undefined' && (!window.Peer || !window.io)) {
+        throw new Error('PeerJS or Socket.IO not loaded properly')
+      }
+      
       // Small delay to ensure component is fully mounted
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      businessRef.current = new VideoCallBusiness({
-        roomId,
-        videoGridRef,
-        setParticipantsCount,
-        setMessages,
-        setIsRecording
-      })
+      // Create video call service using the factory function
+      businessRef.current = useFallback 
+        ? createVideoCallServiceWithFallback({
+            roomId,
+            videoGridRef,
+            setParticipantsCount,
+            setMessages,
+            setIsRecording
+          })
+        : createVideoCallService({
+            roomId,
+            videoGridRef,
+            setParticipantsCount,
+            setMessages,
+            setIsRecording
+          })
       
-      await businessRef.current.initialize()
+      // Initialize the video call
+      await businessRef.current._init()
       setIsInCall(true)
     } catch (error) {
       console.error('Failed to join call:', error)
-      setError('Failed to join call. Please check your camera permissions and try again.')
+      setError(`Failed to join call: ${error.message}. Please check your camera permissions and try again.`)
     } finally {
       setIsLoading(false)
     }
@@ -456,10 +111,31 @@ export default function VideoCall() {
     }
   }
 
+  const handleToggleDebug = () => {
+    if (businessRef.current) {
+      businessRef.current.toggleDebugOverlays()
+    }
+  }
+
   const handleSendMessage = () => {
     if (businessRef.current && newMessage.trim()) {
       businessRef.current.sendMessage(newMessage)
       setNewMessage('')
+    }
+  }
+
+  const runDiagnostics = async () => {
+    setIsLoading(true)
+    try {
+      const diagnosticTool = new PeerConnectionDiagnostics()
+      const results = await diagnosticTool.runFullDiagnostics()
+      setDiagnostics(diagnosticTool.generateReport())
+      setShowDiagnostics(true)
+    } catch (error) {
+      console.error('❌ Failed to run diagnostics:', error)
+      setError('Failed to run diagnostics: ' + error.message)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -468,8 +144,6 @@ export default function VideoCall() {
       <>
         <Head>
           <title>Video Call - Tigasdev</title>
-          <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-          <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
         </Head>
         <Layout>
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
@@ -496,17 +170,55 @@ export default function VideoCall() {
                     disabled={isLoading}
                   />
                 </div>
+                <div className="flex items-center space-x-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="useFallback"
+                    checked={useFallback}
+                    onChange={(e) => setUseFallback(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="useFallback" className="text-sm text-gray-300">
+                    Use fallback (PeerJS cloud)
+                  </label>
+                </div>
+
                 <button
                   onClick={joinCall}
                   disabled={isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-md transition duration-200"
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-md transition duration-200 mb-2"
                 >
                   {isLoading ? '🎥 Connecting...' : 'Join Call'}
+                </button>
+
+                <button
+                  onClick={runDiagnostics}
+                  disabled={isLoading}
+                  className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-md transition duration-200 mb-4"
+                >
+                  {isLoading ? '🔍 Running diagnostics...' : '🔍 Run Connection Test'}
                 </button>
                 
                 <div className="text-sm text-gray-400 text-center">
                   💡 Make sure to allow camera and microphone access when prompted
                 </div>
+
+                {showDiagnostics && diagnostics && (
+                  <div className="mt-4 p-4 bg-gray-700 rounded-md">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-white font-medium">Diagnostic Results</h3>
+                      <button
+                        onClick={() => setShowDiagnostics(false)}
+                        className="text-gray-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
+                      {diagnostics}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -519,13 +231,13 @@ export default function VideoCall() {
     <>
       <Head>
         <title>Video Call - {roomId}</title>
-        <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-        <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
       </Head>
       <div className="h-screen bg-gray-900 flex flex-col">
         {/* Header */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between">
-          <div className="text-white font-medium">Room: {roomId}</div>
+          <div className="text-white font-medium">
+            Room: <span className="font-mono text-blue-400">{roomId}</span>
+          </div>
           <div className="text-gray-300 text-sm">
             {participantsCount} participant{participantsCount !== 1 ? 's' : ''}
           </div>
@@ -534,10 +246,14 @@ export default function VideoCall() {
         {/* Main Content */}
         <div className="flex-1 flex">
           {/* Video Grid */}
-          <div className="flex-1 p-4">
+          <div className="flex-1 p-4 flex items-center justify-center">
             <div 
               ref={videoGridRef}
-              className="grid gap-4 h-full auto-rows-fr"
+              className={`grid gap-4 auto-rows-fr ${
+                participantsCount === 1 
+                  ? 'w-[70%] h-[70%]' 
+                  : 'w-full h-full'
+              }`}
               style={{
                 gridTemplateColumns: participantsCount === 1 ? '1fr' : 
                                    participantsCount <= 4 ? 'repeat(2, 1fr)' : 
@@ -639,6 +355,17 @@ export default function VideoCall() {
             >
               <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+              </svg>
+            </button>
+
+            {/* Debug Toggle Button */}
+            <button
+              onClick={handleToggleDebug}
+              className="p-3 rounded-full bg-gray-600 hover:bg-gray-700 transition duration-200"
+              title="Toggle Debug Info"
+            >
+              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
               </svg>
             </button>
 
