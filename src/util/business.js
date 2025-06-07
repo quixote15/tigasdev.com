@@ -10,6 +10,7 @@ class VideoCallBusiness {
         this.currentStream = {}
         this.currentPeer = {}
         this.peers = new Map()
+        this.localPeerId = null // Track our own peer ID
         this.isRecording = false
         this.isMuted = false
         this.isVideoOn = true
@@ -36,21 +37,14 @@ class VideoCallBusiness {
         return this
     }
 
-    async _init() {
+    async _initializeAndGetPeerId() {
         try {
-            console.log('🚀 Initializing video call...')
+            console.log('🚀 Initializing peer connection to get ID...')
             
             // Get local stream
             this.currentStream = await this.media.getCamera()
 
-            // Initialize socket
-            this.socket = this.socketBuilder
-                .setOnUserConnected(this.onUserConnected())
-                .setOnUserDisconnected(this.onUserDisconnected())
-                .setOnChatMessage(this.onChatMessage())
-                .build()
-
-            // Initialize peer
+            // Initialize peer first to get our ID
             this.currentPeer = await this.peerBuilder
                 .setOnError(this.onPeerError())
                 .setOnConnectionOpened(this.onPeerConnectionOpened())
@@ -60,24 +54,114 @@ class VideoCallBusiness {
                 .setOnCallClose(this.onCallClose())
                 .build()
 
-            // Add local video (will be updated with real peer ID once available)
-            //this.view.addVideoStream('local-user', this.currentStream, true, this.peers.size + 1)
+            // Ensure we have a valid peer ID
+            if (!this.currentPeer || !this.currentPeer.id) {
+                throw new Error('Peer connection established but no ID available')
+            }
             
-            console.log('✅ Video call initialized successfully')
-            return this
+            // Return the peer ID
+            const peerId = this.currentPeer.id
+            this.localPeerId = peerId
+            console.log('✅ Peer initialized with ID:', peerId)
+            return peerId
         } catch (error) {
-            console.error('❌ Error initializing video call:', error)
+            console.error('❌ Error initializing peer:', error)
             throw error
         }
     }
 
+    addSelfToParticipants(peerId) {
+        console.log('👤 Adding self to participants:', peerId)
+        // Add ourselves to the peers map to prevent duplication
+        this.peers.set(peerId, { 
+            isSelf: true, 
+            stream: this.currentStream,
+            connectTime: Date.now() 
+        })
+        
+        // Update participant count
+        this.setParticipantsCount(this.peers.size)
+    }
+
+    async _completeInitialization() {
+        try {
+            console.log('🚀 Completing video call initialization...')
+            console.log('🔍 Current localPeerId:', this.localPeerId)
+            console.log('🔍 Current peer ID:', this.currentPeer?.id)
+
+            // Initialize socket
+            console.log('🔌 Initializing socket connection...')
+            this.socket = this.socketBuilder
+                .setOnUserConnected(this.onUserConnected())
+                .setOnUserDisconnected(this.onUserDisconnected())
+                .setOnChatMessage(this.onChatMessage())
+                .build()
+
+            // Wait for socket to connect
+            await this._waitForSocketConnection()
+
+            // Ensure we have a valid peer ID before adding video
+            if (!this.localPeerId) {
+                console.error('❌ No local peer ID available, cannot add local video')
+                throw new Error('Local peer ID not available')
+            }
+
+            // Add local video with real peer ID
+            console.log('🎥 Adding local video with peer ID:', this.localPeerId)
+            this.view.addVideoStream(this.localPeerId, this.currentStream, true, this.peers.size)
+            
+            // Join the room now that everything is set up
+            console.log('📡 Emitting join-room event...')
+            console.log('📡 Room ID:', this.roomId)
+            console.log('📡 Peer ID:', this.localPeerId)
+            console.log('📡 Socket connected:', this.socket?.connected)
+            
+            this.socket.emit('join-room', this.roomId, this.localPeerId)
+            
+            console.log('✅ Video call initialization completed')
+            return this
+        } catch (error) {
+            console.error('❌ Error completing initialization:', error)
+            throw error
+        }
+    }
+
+    _waitForSocketConnection() {
+        return new Promise((resolve, reject) => {
+            if (this.socket && this.socket.connected) {
+                console.log('✅ Socket already connected')
+                resolve()
+                return
+            }
+
+            console.log('⏳ Waiting for socket connection...')
+            const timeout = setTimeout(() => {
+                reject(new Error('Socket connection timeout'))
+            }, 10000) // 10 second timeout
+
+            this.socket.on('connect', () => {
+                console.log('✅ Socket connected successfully')
+                clearTimeout(timeout)
+                resolve()
+            })
+
+            this.socket.on('connect_error', (error) => {
+                console.error('❌ Socket connection error:', error)
+                clearTimeout(timeout)
+                reject(error)
+            })
+        })
+    }
+
     onUserConnected = function () {
         return userId => {
-            console.log('👤 User connected:', userId)
+            console.log('👤 User connected event received:', userId)
             console.log('👤 Type of userId:', typeof userId)
             console.log('👤 UserId is object?:', typeof userId === 'object')
             console.log('👤 UserId JSON:', JSON.stringify(userId))
             console.log('👤 Current peer ID:', this.currentPeer?.id)
+            console.log('👤 Local peer ID:', this.localPeerId)
+            console.log('👤 Current participants:', Array.from(this.peers.keys()))
             
             // Extract userId if it's an object
             let actualUserId = userId
@@ -97,6 +181,19 @@ class VideoCallBusiness {
                 }
                 console.log('🔧 Extracted actual user ID:', actualUserId)
             }
+            
+            // Check if this user is already in our participants (including ourselves)
+            if (this.peers.has(actualUserId)) {
+                const peerData = this.peers.get(actualUserId)
+                if (peerData.isSelf) {
+                    console.log('⚠️ Ignoring self-connection event for:', actualUserId)
+                } else {
+                    console.log('⚠️ User already connected, ignoring duplicate:', actualUserId)
+                }
+                return
+            }
+            
+            console.log('✅ Processing new user connection:', actualUserId)
             
             // Add a small delay to ensure the peer is fully registered
             setTimeout(() => {
@@ -153,22 +250,26 @@ class VideoCallBusiness {
         return (peer) => {
             const id = peer.id
             console.log('✅ Peer connected with ID:', id)
-            console.log('🏠 Joining room:', this.roomId)
             
             // Update current peer reference on reconnection
             this.currentPeer = peer
+            this.localPeerId = id
             
-            // Update local video with real peer ID
-            this._updateLocalVideoWithPeerId(id)
-            
-            // Add a small delay before joining room to ensure peer is fully registered
-            setTimeout(() => {
-                console.log('📡 Emitting join-room event...')
-                console.log('📡 Room ID:', this.roomId)
-                console.log('📡 Peer ID:', id)
-                console.log('📡 Socket connected:', this.socket?.connected)
-                this.socket.emit('join-room', this.roomId, id)
-            }, 500) // 500ms delay
+            // Only emit join-room if socket is available (during complete initialization)
+            if (this.socket && this.socket.connected) {
+                console.log('🏠 Joining room:', this.roomId)
+                
+                // Add a small delay before joining room to ensure peer is fully registered
+                setTimeout(() => {
+                    console.log('📡 Emitting join-room event...')
+                    console.log('📡 Room ID:', this.roomId)
+                    console.log('📡 Peer ID:', id)
+                    console.log('📡 Socket connected:', this.socket?.connected)
+                    this.socket.emit('join-room', this.roomId, id)
+                }, 500) // 500ms delay
+            } else {
+                console.log('🔄 Peer connected but socket not ready yet (during initial setup)')
+            }
         }
     }
 
@@ -323,9 +424,14 @@ class VideoCallBusiness {
             // Get new stream
             this.currentStream = await this.media.getCamera()
             
-            // Update local video
-            this.view.removeVideoStream('local-user')
-            this.view.addVideoStream('local-user', this.currentStream, true, this.peers.size + 1)
+            // Update local video with the proper peer ID (not 'local-user')
+            if (this.localPeerId) {
+                this.view.removeVideoStream(this.localPeerId)
+                this.view.addVideoStream(this.localPeerId, this.currentStream, true, this.peers.size)
+                console.log('✅ Updated local video with refreshed stream')
+            } else {
+                console.warn('⚠️ No local peer ID available for video update')
+            }
             
             console.log('✅ Local stream refreshed successfully')
             return this.currentStream
@@ -343,9 +449,14 @@ class VideoCallBusiness {
             console.log(`🤝 UserId JSON: ${JSON.stringify(userId)}`)
         }
         
-        // Validate peer IDs
-        if (!userId || userId === this.currentPeer?.id) {
-            console.log('⚠️ Invalid peer ID or self-connection attempt')
+        // Validate peer IDs and prevent self-connection
+        if (!userId) {
+            console.log('⚠️ Invalid peer ID (empty)')
+            return
+        }
+        
+        if (userId === this.currentPeer?.id) {
+            console.log('⚠️ Preventing self-connection attempt for:', userId)
             return
         }
         
@@ -357,7 +468,13 @@ class VideoCallBusiness {
         
         // check if the user is already in the call
         if (this.peers.has(userId)) {
-            console.log('🤝 User already in the call')
+            console.log('🤝 User already in the call:', userId)
+            return
+        }
+        
+        // Additional safety check - make sure we have a valid current peer
+        if (!this.currentPeer || !this.currentPeer.id) {
+            console.error('❌ No valid peer connection available')
             return
         }
         
@@ -707,16 +824,8 @@ class VideoCallBusiness {
         }
     }
 
-    // Method to update local video with real peer ID
-    _updateLocalVideoWithPeerId(peerId) {
-        // Remove the temporary local-user video
-        this.view.removeVideoStream('local-user')
-        
-        // Re-add with the real peer ID
-        this.view.addVideoStream(peerId, this.currentStream, true, this.peers.size + 1)
-        
-        console.log(`✅ Updated local video with peer ID: ${peerId}`)
-    }
+    // Note: _updateLocalVideoWithPeerId method removed - no longer needed
+    // Local video is now added during _completeInitialization with proper peer ID
 
     // Method to toggle debug overlays
     toggleDebugOverlays() {

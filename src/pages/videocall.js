@@ -17,6 +17,7 @@ if (typeof window !== 'undefined') {
 export default function VideoCall() {
   const [roomId, setRoomId] = useState('')
   const [isInCall, setIsInCall] = useState(false)
+  const [isInPreview, setIsInPreview] = useState(false)
   const [participantsCount, setParticipantsCount] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOn, setIsVideoOn] = useState(true)
@@ -24,13 +25,17 @@ export default function VideoCall() {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [diagnostics, setDiagnostics] = useState(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [useFallback, setUseFallback] = useState(false)
+  const [previewStream, setPreviewStream] = useState(null)
+  const [initializationStep, setInitializationStep] = useState('')
+  const [currentUserId, setCurrentUserId] = useState(null)
   
   const videoGridRef = useRef(null)
+  const previewVideoRef = useRef(null)
   const businessRef = useRef(null)
 
   useEffect(() => {
@@ -38,24 +43,49 @@ export default function VideoCall() {
     const urlParams = new URLSearchParams(window.location.search)
     const urlRoomId = urlParams.get('room') || `room-${Date.now()}`
     setRoomId(urlRoomId)
+    
+    // Auto-initialize the call like Google Meet
+    initializeCall(urlRoomId)
   }, [])
 
-  const joinCall = async () => {
-    if (!roomId) return
-    
-    setIsLoading(true)
-    setError('')
-    
+  // Set up preview video when stream becomes available
+  useEffect(() => {
+    if (previewStream && previewVideoRef.current && isInPreview) {
+      previewVideoRef.current.srcObject = previewStream
+    }
+  }, [previewStream, isInPreview])
+
+  // Clean up preview video when leaving preview mode
+  useEffect(() => {
+    if (!isInPreview && previewVideoRef.current) {
+      previewVideoRef.current.srcObject = null
+    }
+  }, [isInPreview])
+
+  const initializeCall = async (roomId) => {
     try {
-      // Check if PeerJS and Socket.IO are available
+      setInitializationStep('Getting camera access...')
+      
+      // Step 1: Get camera access first for preview
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      setPreviewStream(stream)
+      setIsInPreview(true)
+      
+      // Show preview video
+      if (previewVideoRef.current) {
+        previewVideoRef.current.srcObject = stream
+      }
+      
+      setInitializationStep('Connecting to servers...')
+      
+      // Step 2: Check if PeerJS and Socket.IO are available
       if (typeof window !== 'undefined' && (!window.Peer || !window.io)) {
         throw new Error('PeerJS or Socket.IO not loaded properly')
       }
       
-      // Small delay to ensure component is fully mounted
-      await new Promise(resolve => setTimeout(resolve, 100))
+      setInitializationStep('Setting up peer connection...')
       
-      // Create video call service using the factory function
+      // Step 3: Create video call service
       businessRef.current = useFallback 
         ? createVideoCallServiceWithFallback({
             roomId,
@@ -72,15 +102,63 @@ export default function VideoCall() {
             setIsRecording
           })
       
-      // Initialize the video call
-      await businessRef.current._init()
-      setIsInCall(true)
+      setInitializationStep('Getting peer ID...')
+      
+      // Step 4: Initialize peer connection and get our user ID
+      const peerId = await businessRef.current._initializeAndGetPeerId()
+      setCurrentUserId(peerId)
+      console.log('✅ Got our peer ID:', peerId)
+      
+      setInitializationStep('Adding ourselves to participants...')
+      
+      // Step 5: Add ourselves to the participants set to prevent duplication
+      businessRef.current.addSelfToParticipants(peerId)
+      
+      setInitializationStep('Joining room...')
+      
+      // Step 6: Complete initialization and join room
+      await businessRef.current._completeInitialization()
+      
+      // Step 7: Transition to call
+      setTimeout(() => {
+        // Clean up preview first
+        if (previewVideoRef.current) {
+          previewVideoRef.current.srcObject = null
+        }
+        
+        // Stop and clean up preview stream as it will be handled by the business logic
+        if (previewStream) {
+          previewStream.getTracks().forEach(track => track.stop())
+          setPreviewStream(null)
+        }
+        
+        setIsInPreview(false)
+        setIsInCall(true)
+        setIsLoading(false)
+      }, 1500) // Show preview for 1.5 seconds after everything is ready
+      
     } catch (error) {
-      console.error('Failed to join call:', error)
+      console.error('Failed to initialize call:', error)
       setError(`Failed to join call: ${error.message}. Please check your camera permissions and try again.`)
-    } finally {
       setIsLoading(false)
+      setIsInPreview(false)
+        }
+  }
+
+  // Cleanup function for component unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup preview stream on unmount
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop())
+      }
     }
+  }, [previewStream])
+
+  const retryJoin = () => {
+    setError('')
+    setIsLoading(true)
+    initializeCall(roomId)
   }
 
   const leaveCall = () => {
@@ -139,7 +217,147 @@ export default function VideoCall() {
     }
   }
 
-  if (!isInCall) {
+  // Preview layout while setting up
+  if (isInPreview) {
+    return (
+      <>
+        <Head>
+          <title>Joining Call - {roomId}</title>
+        </Head>
+        <div className="h-screen bg-gray-900 flex flex-col">
+          {/* Header */}
+          <div className="bg-gray-800 px-4 py-2 flex items-center justify-between">
+            <div className="text-white font-medium">
+              Joining Room: <span className="font-mono text-blue-400">{roomId}</span>
+            </div>
+            <div className="text-gray-300 text-sm">
+              {initializationStep}
+            </div>
+          </div>
+
+          {/* Preview Content */}
+          <div className="flex-1 flex items-center justify-center p-4">
+            <div className="max-w-2xl w-full">
+              {/* Main Preview Video */}
+              <div className="relative bg-gray-800 rounded-lg overflow-hidden mb-4">
+                <video
+                  ref={previewVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-64 sm:h-80 object-cover"
+                />
+                
+                {/* Preview overlay */}
+                <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white p-3 rounded text-sm font-mono">
+                  <div><strong>ID:</strong> {currentUserId || 'Getting...'}</div>
+                  <div><strong>Status:</strong> Setting up...</div>
+                  <div><strong>Camera:</strong> {previewStream ? 'Active' : 'Connecting...'}</div>
+                  <div><strong>Audio:</strong> {previewStream ? 'Active' : 'Connecting...'}</div>
+                  <div><strong>Step:</strong> {initializationStep}</div>
+                </div>
+
+                <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm">
+                  You (Preview)
+                </div>
+              </div>
+
+              {/* Loading indicator */}
+              <div className="text-center text-white">
+                <div className="inline-flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                  <span>{initializationStep}</span>
+                </div>
+                <p className="text-gray-400 text-sm mt-2">
+                  Setting up your connection to the call...
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Preview Controls */}
+          <div className="bg-gray-800 p-4">
+            <div className="flex items-center justify-center space-x-4">
+              <button
+                onClick={() => {
+                  if (previewStream) {
+                    const videoTrack = previewStream.getVideoTracks()[0]
+                    if (videoTrack) {
+                      videoTrack.enabled = !videoTrack.enabled
+                      setIsVideoOn(videoTrack.enabled)
+                    }
+                  }
+                }}
+                className={`p-3 rounded-full transition duration-200 ${
+                  !isVideoOn ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-600 hover:bg-gray-700'
+                }`}
+              >
+                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  {!isVideoOn ? (
+                    <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A2 2 0 0017 14V8a2 2 0 00-2-2v4a2 2 0 01-2 2H8.414L3.707 2.293zM2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
+                  ) : (
+                    <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                  )}
+                </svg>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (previewStream) {
+                    const audioTrack = previewStream.getAudioTracks()[0]
+                    if (audioTrack) {
+                      audioTrack.enabled = !audioTrack.enabled
+                      setIsMuted(!audioTrack.enabled)
+                    }
+                  }
+                }}
+                className={`p-3 rounded-full transition duration-200 ${
+                  isMuted ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-600 hover:bg-gray-700'
+                }`}
+              >
+                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  {isMuted ? (
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.793L4.29 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.29l4.093-3.793a1 1 0 011.617.793zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  ) : (
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.793L4.29 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.29l4.093-3.793a1 1 0 011.617.793zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                  )}
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  // Loading layout (initial page load)
+  if (isLoading && !isInPreview) {
+    return (
+      <>
+        <Head>
+          <title>Loading - Video Call</title>
+        </Head>
+        <Layout>
+          <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+            <div className="bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full mx-4 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+              <h1 className="text-2xl font-bold text-white mb-4">Preparing Video Call</h1>
+              <p className="text-gray-300 mb-4">{initializationStep || 'Initializing...'}</p>
+              
+              {error && (
+                <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
+                  {error}
+                </div>
+              )}
+            </div>
+          </div>
+        </Layout>
+      </>
+    )
+  }
+
+  // Error fallback - manual join option
+  if (!isInCall && !isInPreview && !isLoading) {
     return (
       <>
         <Head>
@@ -184,11 +402,11 @@ export default function VideoCall() {
                 </div>
 
                 <button
-                  onClick={joinCall}
+                  onClick={retryJoin}
                   disabled={isLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-md transition duration-200 mb-2"
                 >
-                  {isLoading ? '🎥 Connecting...' : 'Join Call'}
+                  {isLoading ? '🎥 Retrying...' : 'Retry Connection'}
                 </button>
 
                 <button

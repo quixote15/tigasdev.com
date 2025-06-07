@@ -16,6 +16,14 @@ class View {
 
     addVideoStream(userId, stream, isLocal = false, participantsCount = 1) {
         console.log(`🎬 Adding video stream for ${isLocal ? 'local user' : userId}`)
+        console.log(`🎬 UserId type: ${typeof userId}, value: ${userId}`)
+        console.log(`🎬 IsLocal: ${isLocal}`)
+        
+        // Check for null/undefined userId
+        if (!userId) {
+            console.error('❌ Cannot add video stream with null/undefined userId:', userId)
+            return
+        }
         
         // Retry mechanism for video grid ref
         const attemptAddVideo = (attempt = 1, maxAttempts = 10) => {
