@@ -52,15 +52,15 @@ class View {
             }
 
             const videoWrapper = document.createElement('div')
-            videoWrapper.className = `relative bg-gray-800 rounded-lg overflow-hidden ${isLocal ? 'border-2 border-blue-500' : ''}`
+            videoWrapper.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video min-h-[200px] md:min-h-[300px]'
             videoWrapper.id = userId
 
             const video = document.createElement('video')
-            video.srcObject = stream
             video.autoplay = true
             video.playsInline = true
-            video.muted = isLocal // Mute local video to prevent feedback
+            video.muted = isLocal
             video.className = 'w-full h-full object-cover'
+            video.srcObject = stream
             
             // Add event listeners for debugging
             video.addEventListener('loadstart', () => {
@@ -119,15 +119,15 @@ class View {
 
             // Debug overlay
             const debugOverlay = document.createElement('div')
-            debugOverlay.className = 'absolute top-2 left-2 bg-black bg-opacity-70 text-white p-2 rounded text-xs font-mono max-w-xs'
+            debugOverlay.className = 'absolute top-1 left-1 md:top-2 md:left-2 bg-black bg-opacity-70 text-white p-1 md:p-2 rounded text-xs font-mono max-w-[140px] md:max-w-xs leading-tight'
             debugOverlay.id = `debug-${userId}`
             debugOverlay.innerHTML = `
-                <div><strong>ID:</strong> ${userId}</div>
+                <div><strong>ID:</strong> ${userId.substring(0, 8)}...</div>
                 <div><strong>Status:</strong> <span id="status-${userId}">connecting...</span></div>
-                <div><strong>Ping:</strong> <span id="ping-${userId}">--</span> ms</div>
-                <div><strong>Rate:</strong> <span id="rate-${userId}">--</span> kbps</div>
-                <div><strong>Resolution:</strong> <span id="resolution-${userId}">--</span></div>
-                <div><strong>FPS:</strong> <span id="fps-${userId}">--</span></div>
+                <div><strong>Ping:</strong> <span id="ping-${userId}">--</span>ms</div>
+                <div><strong>Rate:</strong> <span id="rate-${userId}">--</span>k</div>
+                <div class="hidden md:block"><strong>Resolution:</strong> <span id="resolution-${userId}">--</span></div>
+                <div class="hidden md:block"><strong>FPS:</strong> <span id="fps-${userId}">--</span></div>
             `
 
             videoWrapper.appendChild(video)
