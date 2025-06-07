@@ -19,7 +19,7 @@ export const createVideoCallService = ({
     setParticipantsCount,
     setMessages,
     setIsRecording,
-    socketUrl = 'http://signaling-server.tigasdev.com',
+    socketUrl = 'https://signaling-server.tigasdev.com',
     peerConfig = null // Will be set below
 }) => {
     // Primary config - your custom server
