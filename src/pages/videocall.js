@@ -509,16 +509,26 @@ export default function VideoCall() {
           <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
             <div 
               ref={videoGridRef}
-              className={`grid gap-2 md:gap-4 auto-rows-fr w-full ${
+              className={`grid gap-2 md:gap-3 w-full h-full ${
+                // Dynamic grid classes based on participant count
                 participantsCount === 1 
-                  ? 'h-[60vh] md:w-[70%] md:h-[70%]' 
-                  : 'h-full'
+                  ? 'grid-cols-1 max-w-4xl max-h-[70vh] mx-auto' 
+                  : participantsCount === 2
+                  ? 'grid-cols-1 md:grid-cols-2 max-h-full'
+                  : participantsCount <= 4
+                  ? 'grid-cols-1 sm:grid-cols-2 max-h-full'
+                  : participantsCount <= 6
+                  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-h-full'
+                  : participantsCount <= 9
+                  ? 'grid-cols-2 sm:grid-cols-3 max-h-full'
+                  : 'grid-cols-3 sm:grid-cols-4 max-h-full'
               }`}
               style={{
-                gridTemplateColumns: participantsCount === 1 ? '1fr' : 
-                                   participantsCount <= 2 ? '1fr' :  // Stack vertically on mobile for 2 people
-                                   participantsCount <= 4 ? 'repeat(auto-fit, minmax(280px, 1fr))' : // Responsive grid
-                                   'repeat(auto-fit, minmax(240px, 1fr))'
+                // Ensure consistent aspect ratios and proper sizing
+                gridAutoRows: participantsCount === 1 ? 'minmax(0, 1fr)' :
+                             participantsCount <= 4 ? 'minmax(200px, 1fr)' :
+                             participantsCount <= 6 ? 'minmax(180px, 1fr)' :
+                             'minmax(160px, 1fr)'
               }}
             />
           </div>

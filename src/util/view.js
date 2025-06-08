@@ -52,14 +52,18 @@ class View {
             }
 
             const videoWrapper = document.createElement('div')
-            videoWrapper.className = 'relative bg-gray-800 rounded-lg overflow-hidden aspect-video min-h-[200px] md:min-h-[300px]'
+            videoWrapper.className = 'relative bg-gray-800 rounded-lg overflow-hidden w-full h-full flex items-center justify-center group'
             videoWrapper.id = userId
+
+            // Inner container to maintain aspect ratio
+            const videoContainer = document.createElement('div')
+            videoContainer.className = 'relative w-full h-full aspect-video'
 
             const video = document.createElement('video')
             video.autoplay = true
             video.playsInline = true
             video.muted = true // All participants join muted
-            video.className = 'w-full h-full object-cover'
+            video.className = 'w-full h-full object-cover rounded-lg'
             video.srcObject = stream
             
             // Add event listeners for debugging
@@ -114,25 +118,33 @@ class View {
             }
 
             const nameLabel = document.createElement('div')
-            nameLabel.className = 'absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm'
-            nameLabel.textContent = isLocal ? 'You (Local)' : `Remote: ${userId.substring(0, 8)}`
+            nameLabel.className = 'absolute bottom-2 left-2 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full text-sm font-medium transition-opacity group-hover:opacity-100 opacity-90'
+            nameLabel.textContent = isLocal ? 'You' : `${userId.substring(0, 10)}`
 
-            // Debug overlay
+            // Debug overlay - now more compact and better positioned
             const debugOverlay = document.createElement('div')
-            debugOverlay.className = 'absolute top-1 left-1 md:top-2 md:left-2 bg-black bg-opacity-70 text-white p-1 md:p-2 rounded text-xs font-mono max-w-[140px] md:max-w-xs leading-tight'
+            debugOverlay.className = 'absolute top-2 left-2 bg-black bg-opacity-70 text-white p-2 rounded text-xs font-mono max-w-[160px] leading-tight transition-opacity opacity-0 group-hover:opacity-100'
             debugOverlay.id = `debug-${userId}`
             debugOverlay.innerHTML = `
                 <div><strong>ID:</strong> ${userId.substring(0, 8)}...</div>
                 <div><strong>Status:</strong> <span id="status-${userId}">connecting...</span></div>
                 <div><strong>Ping:</strong> <span id="ping-${userId}">--</span>ms</div>
                 <div><strong>Rate:</strong> <span id="rate-${userId}">--</span>k</div>
-                <div class="hidden md:block"><strong>Resolution:</strong> <span id="resolution-${userId}">--</span></div>
-                <div class="hidden md:block"><strong>FPS:</strong> <span id="fps-${userId}">--</span></div>
+                <div><strong>Res:</strong> <span id="resolution-${userId}">--</span></div>
+                <div><strong>FPS:</strong> <span id="fps-${userId}">--</span></div>
             `
 
-            videoWrapper.appendChild(video)
-            videoWrapper.appendChild(nameLabel)
-            videoWrapper.appendChild(debugOverlay)
+            // Connection status indicator
+            const statusIndicator = document.createElement('div')
+            statusIndicator.className = 'absolute top-2 right-2 w-3 h-3 rounded-full bg-green-500 transition-colors'
+            statusIndicator.id = `indicator-${userId}`
+
+            // Assemble the video container
+            videoContainer.appendChild(video)
+            videoContainer.appendChild(nameLabel)
+            videoContainer.appendChild(debugOverlay)
+            videoContainer.appendChild(statusIndicator)
+            videoWrapper.appendChild(videoContainer)
 
             // Start monitoring stream stats
             this._startStreamMonitoring(userId, video, stream, isLocal)
@@ -284,12 +296,26 @@ class View {
     // Update methods for debug overlay
     updateConnectionStatus(userId, status) {
         const statusElement = document.getElementById(`status-${userId}`)
+        const indicatorElement = document.getElementById(`indicator-${userId}`)
+        
         if (statusElement) {
             statusElement.textContent = status
             statusElement.style.color = this._getStatusColor(status)
             console.log(`📊 Updated status for ${userId}: ${status}`)
         } else {
             console.warn(`⚠️ Status element not found for ${userId}`)
+        }
+        
+        if (indicatorElement) {
+            // Update visual status indicator
+            const colorClass = status === 'connected' ? 'bg-green-500' :
+                             status === 'connecting' ? 'bg-yellow-500' :
+                             status === 'local' ? 'bg-blue-500' :
+                             status === 'buffering' ? 'bg-yellow-500' :
+                             status === 'disconnected' ? 'bg-orange-500' :
+                             'bg-red-500'
+            
+            indicatorElement.className = `absolute top-2 right-2 w-3 h-3 rounded-full transition-colors ${colorClass}`
         }
     }
 
@@ -359,10 +385,18 @@ class View {
     // Show/hide all debug overlays
     toggleAllDebugOverlays() {
         const debugOverlays = document.querySelectorAll('[id^="debug-"]')
-        const isVisible = debugOverlays.length > 0 && debugOverlays[0].style.display !== 'none'
+        const isVisible = debugOverlays.length > 0 && !debugOverlays[0].classList.contains('opacity-0')
         
         debugOverlays.forEach(overlay => {
-            overlay.style.display = isVisible ? 'none' : 'block'
+            if (isVisible) {
+                // Hide permanently
+                overlay.classList.remove('group-hover:opacity-100')
+                overlay.classList.add('opacity-0')
+            } else {
+                // Show and restore hover behavior
+                overlay.classList.remove('opacity-0')
+                overlay.classList.add('group-hover:opacity-100', 'opacity-100')
+            }
         })
         
         return !isVisible
