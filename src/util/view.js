@@ -58,7 +58,7 @@ class View {
             const video = document.createElement('video')
             video.autoplay = true
             video.playsInline = true
-            video.muted = isLocal
+            video.muted = true // All participants join muted
             video.className = 'w-full h-full object-cover'
             video.srcObject = stream
             
@@ -183,39 +183,102 @@ class View {
 
     // Stream monitoring methods
     _startStreamMonitoring(userId, video, stream, isLocal) {
-        // Monitor video resolution and FPS
+        console.log(`🔍 Starting stream monitoring for ${userId} (local: ${isLocal})`)
+        
+        // Initialize monitoring variables
+        let frameCount = 0
+        let lastFrameTime = Date.now()
+        let lastResolutionCheck = 0
+        
+        // Monitor video resolution, FPS and general health
         const updateVideoStats = () => {
-            if (video.videoWidth && video.videoHeight) {
-                this.updateResolution(userId, `${video.videoWidth}x${video.videoHeight}`)
-            }
-            
-            // Calculate FPS (basic estimation)
-            if (!video._frameCount) video._frameCount = 0
-            if (!video._lastFrameTime) video._lastFrameTime = Date.now()
-            
-            video._frameCount++
-            const now = Date.now()
-            const timeDiff = now - video._lastFrameTime
-            
-            if (timeDiff >= 30000) { // Update every 30 seconds
-                const fps = Math.round((video._frameCount * 1000) / timeDiff)
-                this.updateFPS(userId, fps)
-                video._frameCount = 0
-                video._lastFrameTime = now
+            try {
+                // Update resolution more frequently when it changes
+                if (video.videoWidth && video.videoHeight) {
+                    const resolution = `${video.videoWidth}x${video.videoHeight}`
+                    const now = Date.now()
+                    
+                    // Check resolution every 2 seconds or when significant time has passed
+                    if (now - lastResolutionCheck > 2000) {
+                        this.updateResolution(userId, resolution)
+                        lastResolutionCheck = now
+                    }
+                }
+                
+                // Calculate FPS using requestAnimationFrame for accuracy
+                const calculateFPS = () => {
+                    frameCount++
+                    const now = Date.now()
+                    const timeDiff = now - lastFrameTime
+                    
+                    // Calculate FPS every 5 seconds for more responsive updates
+                    if (timeDiff >= 5000) {
+                        const fps = Math.round((frameCount * 1000) / timeDiff)
+                        this.updateFPS(userId, fps)
+                        frameCount = 0
+                        lastFrameTime = now
+                    }
+                    
+                    // Continue monitoring if video element still exists
+                    if (document.getElementById(userId) && !video.ended && !video.paused) {
+                        requestAnimationFrame(calculateFPS)
+                    }
+                }
+                
+                // Start FPS monitoring with requestAnimationFrame
+                if (!video.ended && !video.paused) {
+                    requestAnimationFrame(calculateFPS)
+                }
+                
+            } catch (error) {
+                console.warn(`⚠️ Error updating video stats for ${userId}:`, error)
             }
         }
 
-        // Start monitoring
+        // Start monitoring with more frequent updates
         const statsInterval = setInterval(() => {
-            if (document.getElementById(userId)) {
+            const videoElement = document.getElementById(userId)
+            if (videoElement) {
                 updateVideoStats()
             } else {
+                console.log(`📹 Video element for ${userId} no longer exists, stopping monitoring`)
                 clearInterval(statsInterval)
             }
-        }, 30000) // Update every 30 seconds
+        }, 2000) // Update every 2 seconds instead of 30
 
         // Set initial status
         this.updateConnectionStatus(userId, isLocal ? 'local' : 'connecting')
+        
+        // Run initial stats check
+        setTimeout(() => {
+            updateVideoStats()
+        }, 1000)
+        
+        // Monitor video events for better status tracking
+        video.addEventListener('loadedmetadata', () => {
+            console.log(`📹 Video metadata loaded for ${userId}`)
+            updateVideoStats()
+        })
+        
+        video.addEventListener('playing', () => {
+            console.log(`▶️ Video started playing for ${userId}`)
+            if (!isLocal) {
+                this.updateConnectionStatus(userId, 'connected')
+            }
+            updateVideoStats()
+        })
+        
+        video.addEventListener('waiting', () => {
+            console.log(`⏳ Video buffering for ${userId}`)
+            if (!isLocal) {
+                this.updateConnectionStatus(userId, 'buffering')
+            }
+        })
+        
+        video.addEventListener('error', (e) => {
+            console.error(`❌ Video error for ${userId}:`, e)
+            this.updateConnectionStatus(userId, 'failed')
+        })
     }
 
     // Update methods for debug overlay
@@ -224,6 +287,9 @@ class View {
         if (statusElement) {
             statusElement.textContent = status
             statusElement.style.color = this._getStatusColor(status)
+            console.log(`📊 Updated status for ${userId}: ${status}`)
+        } else {
+            console.warn(`⚠️ Status element not found for ${userId}`)
         }
     }
 
@@ -232,6 +298,9 @@ class View {
         if (pingElement) {
             pingElement.textContent = pingMs
             pingElement.style.color = pingMs < 100 ? '#10b981' : pingMs < 300 ? '#f59e0b' : '#ef4444'
+            console.log(`📊 Updated ping for ${userId}: ${pingMs}ms`)
+        } else {
+            console.warn(`⚠️ Ping element not found for ${userId}`)
         }
     }
 
@@ -239,6 +308,10 @@ class View {
         const rateElement = document.getElementById(`rate-${userId}`)
         if (rateElement) {
             rateElement.textContent = rateKbps
+            rateElement.style.color = rateKbps > 1000 ? '#10b981' : rateKbps > 500 ? '#f59e0b' : '#ef4444'
+            console.log(`📊 Updated rate for ${userId}: ${rateKbps}k`)
+        } else {
+            console.warn(`⚠️ Rate element not found for ${userId}`)
         }
     }
 
@@ -246,6 +319,9 @@ class View {
         const resolutionElement = document.getElementById(`resolution-${userId}`)
         if (resolutionElement) {
             resolutionElement.textContent = resolution
+            console.log(`📊 Updated resolution for ${userId}: ${resolution}`)
+        } else {
+            console.warn(`⚠️ Resolution element not found for ${userId}`)
         }
     }
 
@@ -254,6 +330,9 @@ class View {
         if (fpsElement) {
             fpsElement.textContent = fps
             fpsElement.style.color = fps >= 24 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
+            console.log(`📊 Updated FPS for ${userId}: ${fps}`)
+        } else {
+            console.warn(`⚠️ FPS element not found for ${userId}`)
         }
     }
 
@@ -262,6 +341,7 @@ class View {
             case 'connected': return '#10b981'
             case 'connecting': return '#f59e0b'
             case 'local': return '#3b82f6'
+            case 'buffering': return '#f59e0b'
             case 'disconnected': return '#ef4444'
             case 'failed': return '#dc2626'
             default: return '#6b7280'

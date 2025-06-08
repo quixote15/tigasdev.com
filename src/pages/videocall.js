@@ -19,7 +19,7 @@ export default function VideoCall() {
   const [isInCall, setIsInCall] = useState(false)
   const [isInPreview, setIsInPreview] = useState(false)
   const [participantsCount, setParticipantsCount] = useState(1)
-  const [isMuted, setIsMuted] = useState(false)
+  const [isMuted, setIsMuted] = useState(true) // Start muted by default
   const [isVideoOn, setIsVideoOn] = useState(true)
   const [isRecording, setIsRecording] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
@@ -68,6 +68,14 @@ export default function VideoCall() {
       
       // Step 1: Get camera access first for preview
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      
+      // Mute the preview stream by default
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.enabled = false // Start muted
+        console.log('🔇 Preview audio muted by default')
+      }
+      
       setPreviewStream(stream)
       setIsInPreview(true)
       

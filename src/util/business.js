@@ -12,7 +12,7 @@ class VideoCallBusiness {
         this.peers = new Map()
         this.localPeerId = null // Track our own peer ID
         this.isRecording = false
-        this.isMuted = false
+        this.isMuted = true // Start muted by default
         this.isVideoOn = true
 
         // Callback handlers
@@ -43,6 +43,9 @@ class VideoCallBusiness {
             
             // Get local stream
             this.currentStream = await this.media.getCamera()
+            
+            // Mute local audio by default
+            this._applyInitialMuteState()
 
             // Initialize peer first to get our ID
             this.currentPeer = await this.peerBuilder
@@ -109,6 +112,9 @@ class VideoCallBusiness {
             // Add local video with real peer ID
             console.log('🎥 Adding local video with peer ID:', this.localPeerId)
             this.view.addVideoStream(this.localPeerId, this.currentStream, true, this.peers.size)
+            
+            // Start monitoring local stats
+            this._startLocalMonitoring()
             
             // Join the room now that everything is set up
             console.log('📡 Emitting join-room event...')
@@ -344,15 +350,20 @@ class VideoCallBusiness {
                 id: stream.id
             })
             
-            this.view.addVideoStream(callerId, stream, false, this.peers.size + 1)
             this.peers.set(callerId, { call, stream, connectTime: Date.now() })
-            this.setParticipantsCount(this.peers.size + 1)
+            this.view.addVideoStream(callerId, stream, false, this.peers.size)
+            this.setParticipantsCount(this.peers.size)
             
             // Update connection status
             this.view.updateConnectionStatus(callerId, 'connected')
             
             // Start monitoring this peer connection
             this._startPeerMonitoring(callerId, call)
+            
+            // Force update all participant stats when network changes
+            setTimeout(() => {
+                this._updateAllParticipantStats()
+            }, 1000) // Small delay to ensure video elements are ready
             
             console.log('✅ Peer connection established successfully with:', callerId)
         }
@@ -367,14 +378,14 @@ class VideoCallBusiness {
                 code: error.code
             })
             
-            // Remove failed peer to avoid confusion
-            if (this.peers.has(call.peer)) {
-                const peerData = this.peers.get(call.peer)
-                if (peerData.call === call) {
-                    this.peers.delete(call.peer)
-                    this.setParticipantsCount(this.peers.size + 1)
-                }
-            }
+                                // Remove failed peer to avoid confusion
+                    if (this.peers.has(call.peer)) {
+                        const peerData = this.peers.get(call.peer)
+                        if (peerData.call === call) {
+                            this.peers.delete(call.peer)
+                            this.setParticipantsCount(this.peers.size)
+                        }
+                    }
             
             // Handle specific error types
             if (error.type === 'peer-unavailable') {
@@ -541,7 +552,7 @@ class VideoCallBusiness {
                     // Remove failed call from peers
                     if (this.peers.has(userId)) {
                         this.peers.delete(userId)
-                        this.setParticipantsCount(this.peers.size + 1)
+                        this.setParticipantsCount(this.peers.size)
                     }
                     
                     // Retry if attempts remaining
@@ -557,7 +568,7 @@ class VideoCallBusiness {
             })
             
             this.peers.set(userId, { call, attempt })
-            this.setParticipantsCount(this.peers.size + 1)
+            this.setParticipantsCount(this.peers.size)
             
         } catch (error) {
             console.error('❌ Error creating call to:', userId, error)
@@ -585,7 +596,12 @@ class VideoCallBusiness {
         }
         
         // Update participant count
-        this.setParticipantsCount(this.peers.size + 1)
+        this.setParticipantsCount(this.peers.size)
+        
+        // Force update all participant stats when network changes
+        setTimeout(() => {
+            this._updateAllParticipantStats()
+        }, 500) // Small delay to ensure cleanup is complete
     }
 
     toggleMute() {
@@ -727,7 +743,9 @@ class VideoCallBusiness {
                         const timeDiff = (now - peerData.lastStatsTime) / 1000
                         const bitrate = Math.round((bytesDiff * 8) / timeDiff / 1024) // kbps
                         
-                        this.view.updateStreamRate(peerId, bitrate)
+                        if (bitrate > 0) { // Only update if we have a valid bitrate
+                            this.view.updateStreamRate(peerId, bitrate)
+                        }
                     }
                     
                     // Store for next calculation
@@ -748,7 +766,7 @@ class VideoCallBusiness {
             }
         }
 
-        // Start monitoring
+        // Start monitoring with more frequent updates
         const statsInterval = setInterval(() => {
             if (this.peers.has(peerId)) {
                 monitorStats()
@@ -756,7 +774,7 @@ class VideoCallBusiness {
                 clearInterval(statsInterval)
                 if (pingInterval) clearInterval(pingInterval)
             }
-        }, 30000) // Update every 30 seconds
+        }, 5000) // Update every 5 seconds instead of 30
 
         // Simple ping measurement using data channel (if available)
         this._setupPingMeasurement(peerId, call)
@@ -772,7 +790,7 @@ class VideoCallBusiness {
             dataChannel.onopen = () => {
                 console.log(`📡 Data channel opened for ${peerId}`)
                 
-                // Send ping every 30 seconds
+                // Send ping every 10 seconds for more responsive updates
                 const pingInterval = setInterval(() => {
                     if (dataChannel.readyState === 'open') {
                         const pingTime = Date.now()
@@ -780,7 +798,7 @@ class VideoCallBusiness {
                     } else {
                         clearInterval(pingInterval)
                     }
-                }, 30000)
+                }, 10000) // Reduced from 30 seconds to 10 seconds
             }
 
             dataChannel.onmessage = (event) => {
@@ -824,12 +842,249 @@ class VideoCallBusiness {
         }
     }
 
+    // Start monitoring local user stats
+    _startLocalMonitoring() {
+        if (!this.localPeerId || !this.currentStream) return
+
+        console.log('🔍 Starting local stats monitoring for:', this.localPeerId)
+        
+        // Set initial status for local user based on current peer connections
+        const hasOtherPeers = this.peers.size > 1 || (this.peers.size === 1 && !this.peers.get(this.localPeerId)?.isSelf)
+        const initialStatus = hasOtherPeers ? 'connected' : 'local'
+        this.view.updateConnectionStatus(this.localPeerId, initialStatus)
+        console.log(`📊 Set initial local user status to ${initialStatus} (${this.peers.size - 1} peers present)`)
+        
+        // Monitor local stream stats
+        const monitorLocalStats = () => {
+            const videoElement = document.getElementById(this.localPeerId)
+            if (videoElement) {
+                const video = videoElement.querySelector('video')
+                if (video && video.videoWidth && video.videoHeight) {
+                    this.view.updateResolution(this.localPeerId, `${video.videoWidth}x${video.videoHeight}`)
+                }
+            }
+            
+            // Show local ping as 0 since it's local
+            this.view.updatePing(this.localPeerId, 0)
+            
+            // Calculate local stream bitrate (estimate based on video properties)
+            const videoTracks = this.currentStream.getVideoTracks()
+            if (videoTracks.length > 0) {
+                const track = videoTracks[0]
+                const settings = track.getSettings()
+                if (settings.width && settings.height && settings.frameRate) {
+                    // Rough estimate: width * height * frameRate * 0.1 bits per pixel, converted to kbps
+                    const estimatedBitrate = Math.round((settings.width * settings.height * settings.frameRate * 0.1) / 1024)
+                    this.view.updateStreamRate(this.localPeerId, estimatedBitrate)
+                }
+            }
+        }
+
+        // Start monitoring
+        const localStatsInterval = setInterval(() => {
+            if (this.peers.has(this.localPeerId)) {
+                monitorLocalStats()
+            } else {
+                clearInterval(localStatsInterval)
+            }
+        }, 5000) // Update every 5 seconds
+
+        // Run initial check and comprehensive stats update
+        setTimeout(() => {
+            monitorLocalStats()
+            // Also trigger comprehensive stats for all participants
+            this._updateAllParticipantStats()
+        }, 1000)
+    }
+
     // Note: _updateLocalVideoWithPeerId method removed - no longer needed
     // Local video is now added during _completeInitialization with proper peer ID
 
     // Method to toggle debug overlays
     toggleDebugOverlays() {
         return this.view.toggleAllDebugOverlays()
+    }
+
+    // Force update all participant stats (called when peer network changes)
+    _updateAllParticipantStats() {
+        console.log('📊 Updating stats for all participants...')
+        
+        // Update local user stats immediately
+        if (this.localPeerId) {
+            this._updateLocalUserStats()
+        }
+        
+        // Trigger immediate stats update for all remote peers
+        this.peers.forEach((peerData, peerId) => {
+            if (peerData.call && peerData.call.peerConnection && !peerData.isSelf) {
+                console.log(`📊 Triggering stats update for remote peer: ${peerId}`)
+                this._triggerPeerStatsUpdate(peerId, peerData.call)
+            }
+        })
+    }
+
+    // Update local user stats immediately
+    _updateLocalUserStats() {
+        if (!this.localPeerId || !this.currentStream) return
+
+        console.log('📊 Updating local user stats...')
+        
+        // Update status based on peer connections
+        const hasOtherPeers = this.peers.size > 1 || (this.peers.size === 1 && !this.peers.get(this.localPeerId)?.isSelf)
+        const status = hasOtherPeers ? 'connected' : 'local'
+        this.view.updateConnectionStatus(this.localPeerId, status)
+        
+        // Update local ping (always 0 for local)
+        this.view.updatePing(this.localPeerId, 0)
+        
+        // Update resolution and FPS from video element
+        const videoElement = document.getElementById(this.localPeerId)
+        if (videoElement) {
+            const video = videoElement.querySelector('video')
+            if (video && video.videoWidth && video.videoHeight) {
+                this.view.updateResolution(this.localPeerId, `${video.videoWidth}x${video.videoHeight}`)
+                
+                // Estimate FPS for local video based on track settings
+                const videoTracks = this.currentStream.getVideoTracks()
+                if (videoTracks.length > 0) {
+                    const track = videoTracks[0]
+                    const settings = track.getSettings()
+                    if (settings.frameRate) {
+                        this.view.updateFPS(this.localPeerId, Math.round(settings.frameRate))
+                    }
+                }
+            }
+        }
+        
+        // Update estimated bitrate for local stream
+        const videoTracks = this.currentStream.getVideoTracks()
+        if (videoTracks.length > 0) {
+            const track = videoTracks[0]
+            const settings = track.getSettings()
+            if (settings.width && settings.height && settings.frameRate) {
+                // Rough estimate: width * height * frameRate * 0.1 bits per pixel, converted to kbps
+                const estimatedBitrate = Math.round((settings.width * settings.height * settings.frameRate * 0.1) / 1024)
+                this.view.updateStreamRate(this.localPeerId, estimatedBitrate)
+            }
+        }
+        
+        console.log('✅ Local user stats updated')
+    }
+
+    // Trigger immediate stats update for a remote peer
+    _triggerPeerStatsUpdate(peerId, call) {
+        if (!call.peerConnection) return
+
+        const pc = call.peerConnection
+        
+        // Update connection status based on ICE state
+        const iceState = pc.iceConnectionState
+        let status = 'connecting'
+        switch (iceState) {
+            case 'connected':
+            case 'completed':
+                status = 'connected'
+                break
+            case 'disconnected':
+                status = 'disconnected'
+                break
+            case 'failed':
+            case 'closed':
+                status = 'failed'
+                break
+            default:
+                status = 'connecting'
+        }
+        this.view.updateConnectionStatus(peerId, status)
+
+        // Get immediate stats
+        pc.getStats().then(stats => {
+            let inboundRtp = null
+            let candidatePair = null
+
+            stats.forEach(report => {
+                if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                    inboundRtp = report
+                } else if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    candidatePair = report
+                }
+            })
+
+            // Update ping from candidate pair
+            if (candidatePair && candidatePair.currentRoundTripTime !== undefined) {
+                const pingMs = Math.round(candidatePair.currentRoundTripTime * 1000)
+                this.view.updatePing(peerId, pingMs)
+            }
+
+            // Update resolution and trigger FPS monitoring from video element
+            const videoElement = document.getElementById(peerId)
+            if (videoElement) {
+                const video = videoElement.querySelector('video')
+                if (video && video.videoWidth && video.videoHeight) {
+                    this.view.updateResolution(peerId, `${video.videoWidth}x${video.videoHeight}`)
+                    
+                    // Try to get FPS from video track if available
+                    if (inboundRtp && inboundRtp.framesPerSecond) {
+                        this.view.updateFPS(peerId, Math.round(inboundRtp.framesPerSecond))
+                    } else {
+                        // Fallback: estimate from frames decoded if available
+                        if (inboundRtp && inboundRtp.framesDecoded) {
+                            const peerData = this.peers.get(peerId)
+                            if (peerData && peerData.lastFramesDecoded && peerData.lastFrameTime) {
+                                const framesDiff = inboundRtp.framesDecoded - peerData.lastFramesDecoded
+                                const timeDiff = (Date.now() - peerData.lastFrameTime) / 1000
+                                if (timeDiff > 0) {
+                                    const fps = Math.round(framesDiff / timeDiff)
+                                    this.view.updateFPS(peerId, fps)
+                                }
+                            }
+                            // Store for next calculation
+                            if (peerData) {
+                                peerData.lastFramesDecoded = inboundRtp.framesDecoded
+                                peerData.lastFrameTime = Date.now()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Calculate and update bitrate if we have previous data
+            if (inboundRtp && inboundRtp.bytesReceived) {
+                const now = Date.now()
+                const peerData = this.peers.get(peerId)
+                
+                if (peerData && peerData.lastBytesReceived && peerData.lastStatsTime) {
+                    const bytesDiff = inboundRtp.bytesReceived - peerData.lastBytesReceived
+                    const timeDiff = (now - peerData.lastStatsTime) / 1000
+                    if (timeDiff > 0) {
+                        const bitrate = Math.round((bytesDiff * 8) / timeDiff / 1024) // kbps
+                        if (bitrate > 0) {
+                            this.view.updateStreamRate(peerId, bitrate)
+                        }
+                    }
+                }
+                
+                // Store for next calculation
+                if (peerData) {
+                    peerData.lastBytesReceived = inboundRtp.bytesReceived
+                    peerData.lastStatsTime = now
+                }
+            }
+
+        }).catch(error => {
+            console.warn(`⚠️ Failed to get immediate stats for ${peerId}:`, error)
+        })
+    }
+
+    // Apply initial mute state to local stream
+    _applyInitialMuteState() {
+        if (this.currentStream && this.isMuted) {
+            const audioTrack = this.currentStream.getAudioTracks()[0]
+            if (audioTrack) {
+                audioTrack.enabled = false
+                console.log('🔇 Local audio muted by default on initialization')
+            }
+        }
     }
 }
 
