@@ -685,7 +685,6 @@ export default function VideoCall() {
         <div className="bg-gray-800 p-2 md:p-4">
           <div className="flex items-center justify-center space-x-2 md:space-x-4 flex-wrap">
             {/* Mute Button */}
-            <p>isMuted: {isMuted}</p>
             <button
               onClick={handleMuteToggle}
               className={`p-2 md:p-3 rounded-full transition duration-200 ${

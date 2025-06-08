@@ -2,6 +2,7 @@ class View {
     constructor() {
         this.videoGridRef = null
         this.setParticipantsCount = null
+        this.localUserId = null
         
     }
 
@@ -14,29 +15,33 @@ class View {
         this.setParticipantsCount = callback
         return this
     }
-
-    toggleMuteState(userId) {
-        const videoElementWrapper = document.getElementById(userId)
-        if (videoElementWrapper) {
-            const videoElement = videoElementWrapper.querySelector('video')
-            console.log(`🎤 Mute state for ${userId}: ${videoElement.muted}`)
-            console.log(`🎤 Video element: ${videoElement}`)
-            videoElement.muted = !videoElement.muted
-            return videoElement.muted
-        }
-        return false
+    
+    setLocalUserId(userId) {
+        this.localUserId = userId
+        return this
     }
 
-    getMuteState(userId) {
+    updateMuteVisualIndicator(userId, isMuted) {
+        // This method only handles visual feedback for mute state
+        // It does NOT control audio transmission or output
         const videoElementWrapper = document.getElementById(userId)
         if (videoElementWrapper) {
-            const videoElement = videoElementWrapper.querySelector('video')
-            console.log(`🎤 Mute state for ${userId}: ${videoElement.muted}`)
-            console.log(`🎤 Video element: ${videoElement}`)
-            return videoElement.muted
+            // Add visual mute indicator (could be an icon, overlay, etc.)
+            let muteIndicator = videoElementWrapper.querySelector('.mute-indicator')
+            if (!muteIndicator) {
+                muteIndicator = document.createElement('div')
+                muteIndicator.className = 'mute-indicator absolute top-2 right-8 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold opacity-0 transition-opacity'
+                muteIndicator.innerHTML = '🔇'
+                videoElementWrapper.appendChild(muteIndicator)
+            }
+            
+            // Show/hide mute indicator based on mute state
+            muteIndicator.style.opacity = isMuted ? '1' : '0'
+            console.log(`🎤 Visual mute indicator for ${userId}: ${isMuted ? 'SHOWN' : 'HIDDEN'}`)
         }
-        return false
     }
+
+
 
     addVideoStream(userId, stream, isLocal = false, participantsCount = 1) {
         console.log(`🎬 Adding video stream for ${isLocal ? 'local user' : userId}`)
@@ -82,7 +87,10 @@ class View {
             const video = document.createElement('video')
             video.autoplay = true
             video.playsInline = true
-            video.muted = true // All participants join muted
+            // Audio OUTPUT control (what you hear from this video):
+            // - Local user: muted to prevent audio feedback (hearing your own voice)
+            // - Remote users: not muted so you can hear them
+            video.muted = isLocal
             video.className = 'w-full h-full object-cover rounded-lg'
             video.srcObject = stream
             
@@ -326,7 +334,6 @@ class View {
         if (pingElement) {
             pingElement.textContent = pingMs
             pingElement.style.color = pingMs < 100 ? '#10b981' : pingMs < 300 ? '#f59e0b' : '#ef4444'
-            console.log(`📊 Updated ping for ${userId}: ${pingMs}ms`)
         } else {
             console.warn(`⚠️ Ping element not found for ${userId}`)
         }
@@ -337,7 +344,6 @@ class View {
         if (rateElement) {
             rateElement.textContent = rateKbps
             rateElement.style.color = rateKbps > 1000 ? '#10b981' : rateKbps > 500 ? '#f59e0b' : '#ef4444'
-            console.log(`📊 Updated rate for ${userId}: ${rateKbps}k`)
         } else {
             console.warn(`⚠️ Rate element not found for ${userId}`)
         }
@@ -347,7 +353,6 @@ class View {
         const resolutionElement = document.getElementById(`resolution-${userId}`)
         if (resolutionElement) {
             resolutionElement.textContent = resolution
-            console.log(`📊 Updated resolution for ${userId}: ${resolution}`)
         } else {
             console.warn(`⚠️ Resolution element not found for ${userId}`)
         }
@@ -358,7 +363,6 @@ class View {
         if (fpsElement) {
             fpsElement.textContent = fps
             fpsElement.style.color = fps >= 24 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
-            console.log(`📊 Updated FPS for ${userId}: ${fps}`)
         } else {
             console.warn(`⚠️ FPS element not found for ${userId}`)
         }

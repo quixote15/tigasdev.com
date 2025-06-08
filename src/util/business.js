@@ -322,9 +322,12 @@ class VideoCallBusiness {
             const id = peer.id
             console.log('✅ Peer connected with ID:', id)
             
-            // Update current peer reference on reconnection
-            this.currentPeer = peer
-            this.localPeerId = id
+                    // Update current peer reference on reconnection
+        this.currentPeer = peer
+        this.localPeerId = id
+        
+        // Set local user ID in view layer
+        this.view.setLocalUserId(id)
             
             // Only emit join-room if socket is available (during complete initialization)
             if (this.socket && this.socket.connected) {
@@ -710,7 +713,8 @@ class VideoCallBusiness {
     }
 
     toggleMute() {
-        this.isMuted = this.view.toggleMuteState(this.localPeerId)
+        // Toggle the business layer mute state first
+        this.isMuted = !this.isMuted
         console.log(`🎤 Toggling mute state to: ${this.isMuted ? 'MUTED' : 'UNMUTED'}`)
         
         // Check current stream state
@@ -719,6 +723,37 @@ class VideoCallBusiness {
             return this.isMuted
         }
                   
+        // Update visual indicators for all participants to show our mute state
+        this.view.updateMuteVisualIndicator(this.localPeerId, this.isMuted)
+        
+        // Actually control the MediaStreamTrack audio (for transmission to peers)
+        const audioTracks = this.currentStream.getAudioTracks()
+        console.log(`🎤 Found ${audioTracks.length} audio tracks`)
+        
+        if (audioTracks.length === 0) {
+            console.error('❌ No audio tracks found in current stream')
+            return this.isMuted
+        }
+        
+        const audioTrack = audioTracks[0]
+        console.log(`🎤 Audio track details:`, {
+            label: audioTrack.label,
+            enabled: audioTrack.enabled,
+            readyState: audioTrack.readyState,
+            kind: audioTrack.kind
+        })
+        
+        // Set the track state - this controls what gets transmitted
+        audioTrack.enabled = !this.isMuted
+        
+        console.log(`🎤 Audio track enabled set to: ${audioTrack.enabled}`)
+        console.log(`🎤 Business layer mute state: ${this.isMuted}`)
+        console.log(`🎤 Audio ${this.isMuted ? 'MUTED' : 'UNMUTED'} successfully`)
+        
+        // Update all existing peer connections with the new audio state
+        this._updatePeerAudioState()
+        
+        // Notify React component of mute state change
         if (this.muteStateCallback) {
             console.log('🎤 Notifying React component of mute state change:', this.isMuted)
             this.muteStateCallback(this.isMuted)
@@ -727,7 +762,27 @@ class VideoCallBusiness {
         return this.isMuted
     }
     
-   
+    _updatePeerAudioState() {
+        console.log(`🔄 Updating audio state for ${this.peers.size} peer connections`)
+        
+        this.peers.forEach((peerData, peerId) => {
+            if (peerData.call && peerData.call.peerConnection) {
+                const pc = peerData.call.peerConnection
+                const senders = pc.getSenders()
+                
+                const audioSender = senders.find(sender => 
+                    sender.track && sender.track.kind === 'audio'
+                )
+                
+                if (audioSender && audioSender.track) {
+                    console.log(`🔄 Updating audio for peer ${peerId}: enabled = ${!this.isMuted}`)
+                    audioSender.track.enabled = !this.isMuted
+                } else {
+                    console.warn(`⚠️ No audio sender found for peer ${peerId}`)
+                }
+            }
+        })
+    }
 
     toggleVideo() {
         this.isVideoOn = !this.isVideoOn
@@ -1254,7 +1309,6 @@ class VideoCallBusiness {
     
     // Get current mute state
     getCurrentMuteState() {
-        this.isMuted = this.view.getMuteState(this.localPeerId)  
         return this.isMuted
     }
     
@@ -1335,9 +1389,11 @@ class VideoCallBusiness {
                 console.log(`🔧 Corrected track ${index} enabled to: ${track.enabled}`)
                 syncedTracks++
             }
-        })
+                })
         
-     
+        // Also sync peer connections
+        this._updatePeerAudioState()
+      
         console.log(`✅ Force audio sync completed. ${syncedTracks} tracks corrected.`)
         return true
     }
