@@ -147,10 +147,40 @@ export default function VideoCall() {
       
     } catch (error) {
       console.error('Failed to initialize call:', error)
-      setError(`Failed to join call: ${error.message}. Please check your camera permissions and try again.`)
+      
+      // Enhanced error handling for mobile devices
+      let errorMessage = 'Failed to join call: '
+      
+      // Check if this is a mobile-specific error with detailed instructions
+      if (error.message && error.message.includes('For Android devices:')) {
+        errorMessage = error.message
+      } else if (error.message && error.message.includes('For iOS devices:')) {
+        errorMessage = error.message
+      } else {
+        // Standard error handling
+        if (error.message.includes('Permission denied') || error.message.includes('NotAllowedError')) {
+          errorMessage += 'Camera/microphone permission denied. Please allow camera and microphone access and refresh the page.'
+        } else if (error.message.includes('NotFoundError') || error.message.includes('Camera or microphone not found')) {
+          errorMessage += 'Camera or microphone not found. Please ensure your devices are connected and not being used by other applications.'
+        } else if (error.message.includes('PeerJS or Socket.IO not loaded')) {
+          errorMessage += 'Failed to load required libraries. Please refresh the page and try again.'
+        } else if (error.message.includes('OverconstrainedError') || error.message.includes('not supported')) {
+          errorMessage += 'Your device camera/microphone does not support the required settings. This may be due to hardware limitations.'
+        } else {
+          errorMessage += error.message + '. Please check your camera permissions and internet connection.'
+        }
+      }
+      
+      setError(errorMessage)
       setIsLoading(false)
       setIsInPreview(false)
-        }
+      
+      // Clean up preview stream on error
+      if (previewStream) {
+        previewStream.getTracks().forEach(track => track.stop())
+        setPreviewStream(null)
+      }
+    }
   }
 
   // Cleanup function for component unmount
@@ -369,7 +399,9 @@ export default function VideoCall() {
               
               {error && (
                 <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
-                  {error}
+                  <div className="whitespace-pre-line text-sm leading-relaxed">
+                    {error}
+                  </div>
                 </div>
               )}
               

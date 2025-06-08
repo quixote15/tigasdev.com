@@ -41,7 +41,10 @@ class VideoCallBusiness {
         try {
             console.log('🚀 Initializing peer connection to get ID...')
             
-            // Get local stream
+            // Check device support first (especially for mobile)
+            await this._checkMobileSupport()
+            
+            // Get local stream with mobile optimizations
             this.currentStream = await this.media.getCamera()
             
             // Mute local audio by default
@@ -69,6 +72,15 @@ class VideoCallBusiness {
             return peerId
         } catch (error) {
             console.error('❌ Error initializing peer:', error)
+            
+            // Provide mobile-specific error handling
+            if (error.deviceType === 'mobile') {
+                const mobileMessage = this._handleMobileError(error)
+                const enhancedError = new Error(mobileMessage)
+                enhancedError.originalError = error
+                throw enhancedError
+            }
+            
             throw error
         }
     }
@@ -1385,6 +1397,120 @@ class VideoCallBusiness {
         } catch (error) {
             console.warn(`⚠️ Failed to setup ping measurement for ${peerId}:`, error)
         }
+    }
+
+    // Check mobile device support and compatibility
+    async _checkMobileSupport() {
+        console.log('📱 Checking mobile device support...')
+        
+        try {
+            // Check device support
+            const support = await this.media.checkDeviceSupport()
+            
+            // Log important information for mobile debugging
+            if (support.isMobile) {
+                console.log('📱 Mobile device detected:', {
+                    isAndroid: support.isAndroid,
+                    isIOS: support.isIOS,
+                    userAgent: support.userAgent,
+                    isSecureContext: support.isSecureContext,
+                    protocol: support.protocol
+                })
+                
+                // Check for common mobile issues
+                this._checkMobileIssues(support)
+            }
+            
+            // Check for WebRTC support
+            if (!support.hasGetUserMedia) {
+                throw new Error('WebRTC getUserMedia not supported on this device')
+            }
+            
+            if (!support.isSecureContext && support.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+                console.warn('⚠️ Not in secure context - this may cause issues on mobile devices')
+            }
+            
+        } catch (error) {
+            console.error('❌ Mobile support check failed:', error)
+            // Don't throw error here, just log it and continue
+        }
+    }
+
+    _checkMobileIssues(support) {
+        const issues = []
+        
+        // Check for HTTPS on mobile (required for getUserMedia on most mobile browsers)
+        if (support.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+            issues.push('Not using HTTPS - this will prevent camera access on most mobile browsers')
+        }
+        
+        // Check for specific Android Chrome versions with known issues
+        if (support.isAndroid && /Chrome/.test(support.userAgent)) {
+            const chromeVersion = support.userAgent.match(/Chrome\/(\d+)/)
+            if (chromeVersion && parseInt(chromeVersion[1]) < 80) {
+                issues.push('Chrome version may be too old for reliable WebRTC on Android')
+            }
+        }
+        
+        // Check device counts
+        if (support.devices) {
+            if (support.devices.videoinput === 0) {
+                issues.push('No video input devices detected')
+            }
+            if (support.devices.audioinput === 0) {
+                issues.push('No audio input devices detected')
+            }
+        }
+        
+        if (issues.length > 0) {
+            console.warn('⚠️ Potential mobile issues detected:', issues)
+        } else {
+            console.log('✅ No major mobile compatibility issues detected')
+        }
+        
+        return issues
+    }
+
+    // Enhanced error handling for mobile devices
+    _handleMobileError(error) {
+        console.error('📱 Mobile-specific error:', error)
+        
+        let userFriendlyMessage = 'Video call setup failed. '
+        
+        if (error.isAndroid) {
+            userFriendlyMessage += 'For Android devices:\n'
+            
+            if (error.originalError?.name === 'NotAllowedError') {
+                userFriendlyMessage += '• Tap the camera icon in your browser address bar\n' +
+                                    '• Select "Allow" for camera and microphone\n' +
+                                    '• Refresh the page and try again\n' +
+                                    '• If it still doesn\'t work, try using Chrome browser'
+            } else if (error.originalError?.name === 'NotFoundError') {
+                userFriendlyMessage += '• Make sure no other apps are using your camera\n' +
+                                    '• Close other camera/video call apps\n' +
+                                    '• Restart your browser\n' +
+                                    '• Try using Chrome browser if you\'re using a different one'
+            } else if (error.originalError?.name === 'OverconstrainedError') {
+                userFriendlyMessage += '• Your device camera may not support the required settings\n' +
+                                    '• Try refreshing the page\n' +
+                                    '• If the problem persists, your device may not be compatible'
+            } else {
+                userFriendlyMessage += '• Try refreshing the page\n' +
+                                    '• Make sure you\'re using Chrome browser\n' +
+                                    '• Check your internet connection\n' +
+                                    '• Make sure camera permissions are allowed'
+            }
+        } else if (error.isIOS) {
+            userFriendlyMessage += 'For iOS devices:\n' +
+                                '• Make sure you\'re using Safari or Chrome\n' +
+                                '• Allow camera and microphone permissions\n' +
+                                '• Close other apps that might be using the camera\n' +
+                                '• Try refreshing the page'
+        } else {
+            userFriendlyMessage += 'Please check your camera and microphone permissions and try again.'
+        }
+        
+        return userFriendlyMessage
     }
 }
 
