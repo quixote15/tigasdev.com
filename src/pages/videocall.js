@@ -612,7 +612,7 @@ export default function VideoCall() {
                           {showSender && !isOwnMessage && (
                             <div className="text-blue-300 font-medium text-xs mb-1">{msg.sender}</div>
                           )}
-                          <div className="text-white text-sm break-words">{msg.text}</div>
+                          <div className="text-white text-sm break-words">{msg.message || msg.text}</div>
                           <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-200' : 'text-gray-400'}`}>
                             {msg.timestamp}
                           </div>

@@ -75,8 +75,8 @@ class SocketBuilder {
             console.log('🔔 Socket event: user-disconnected received:', userId)
             this.onUserDisconnected(userId)
         })
-        socket.on('chat-message', (message) => {
-            console.log('🔔 Socket event: chat-message received:', message)
+        socket.on('new-message', (message) => {
+            console.log('🔔 Socket event: new-message received:', message)
             this.onChatMessage(message)
         })
 
@@ -88,7 +88,7 @@ class SocketBuilder {
         // Debug: Listen for any other events
         const originalOn = socket.on
         socket.on = function(event, handler) {
-            if (!['connect', 'disconnect', 'connect_error', 'reconnect', 'reconnect_failed', 'user-connected', 'user-disconnected', 'chat-message', 'room-joined'].includes(event)) {
+            if (!['connect', 'disconnect', 'connect_error', 'reconnect', 'reconnect_failed', 'user-connected', 'user-disconnected', 'new-message', 'room-joined'].includes(event)) {
                 console.log('🔔 Socket: Listening for event:', event)
             }
             return originalOn.call(this, event, handler)

@@ -267,19 +267,23 @@ class VideoCallBusiness {
         return message => {
             console.log('💬 Chat message received:', message)
             
-            // Enhance remote message with better sender info
-            if (message.senderId && message.senderId !== this.localPeerId) {
-                const enhancedMessage = {
-                    ...message,
-                    sender: message.senderId ? `Peer ${message.senderId.substring(0, 8)}` : 'Remote User'
-                }
+            // The server sends messages with userId, message, timestamp, and id fields
+            // Convert server format to our client format
+            const enhancedMessage = {
+                message: message.message,
+                messageId: message.id,
+                timestamp: message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString(),
+                senderId: message.userId,
+                sender: message.userId === this.localPeerId ? 'You' : `Peer ${message.userId.substring(0, 8)}`
+            }
+            
+            // Only add the message if it's not our own (we already add our own messages in sendMessage)
+            if (message.userId !== this.localPeerId) {
                 this.setMessages(prev => [...prev, enhancedMessage])
                 console.log('💬 Added remote chat message from:', enhancedMessage.sender)
-            } else if (!message.senderId) {
-                // Fallback for messages without senderId
-                this.setMessages(prev => [...prev, message])
+            } else {
+                console.log('💬 Received our own message echo from server, ignoring')
             }
-            // Don't add our own messages again (they're already added in sendMessage)
         }
     }
 
@@ -713,15 +717,15 @@ class VideoCallBusiness {
     sendMessage(message) {
         if (this.socket && message.trim()) {
             const chatMessage = {
-                text: message.trim(),
+                message: message.trim(),
                 sender: 'You',
                 senderId: this.localPeerId,
                 timestamp: new Date().toLocaleTimeString(),
                 messageId: Date.now() + Math.random() // Unique message ID
             }
-            this.socket.emit('chat-message', chatMessage)
+            this.socket.emit('send-message', chatMessage)
             this.setMessages(prev => [...prev, chatMessage])
-            console.log('💬 Sent chat message:', chatMessage.text)
+            console.log('💬 Sent chat message:', chatMessage.message)
         }
     }
 
