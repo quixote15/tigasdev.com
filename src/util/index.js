@@ -19,6 +19,7 @@ export const createVideoCallService = ({
     setParticipantsCount,
     setMessages,
     setIsRecording,
+    initialMuteState = true,
     socketUrl = 'https://signaling-server.tigasdev.com',
     peerConfig = null // Will be set below
 }) => {
@@ -78,7 +79,8 @@ export const createVideoCallService = ({
         media,
         view,
         socketBuilder,
-        peerBuilder
+        peerBuilder,
+        initialMuteState
     }).setCallbacks({
         setMessages,
         setIsRecording,

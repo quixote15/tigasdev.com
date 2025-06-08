@@ -93,22 +93,27 @@ export default function VideoCall() {
       
       setInitializationStep('Setting up peer connection...')
       
-      // Step 3: Create video call service
+      // Step 3: Create video call service with current mute state from preview
+      const currentMuteState = previewStream ? !previewStream.getAudioTracks()[0]?.enabled : true
+      console.log('🔇 Passing mute state from preview to business layer:', currentMuteState)
+      
       businessRef.current = useFallback 
         ? createVideoCallServiceWithFallback({
             roomId,
             videoGridRef,
             setParticipantsCount,
             setMessages,
-            setIsRecording
+            setIsRecording,
+            initialMuteState: currentMuteState
           })
         : createVideoCallService({
-            roomId,
-            videoGridRef,
-            setParticipantsCount,
-            setMessages,
-            setIsRecording
-          })
+        roomId,
+        videoGridRef,
+        setParticipantsCount,
+        setMessages,
+        setIsRecording,
+        initialMuteState: currentMuteState
+      })
       
       setInitializationStep('Getting peer ID...')
       
@@ -129,6 +134,11 @@ export default function VideoCall() {
       
       // Step 7: Transition to call
       setTimeout(() => {
+        // Sync React state with business layer mute state before transition
+        const businessMuteState = businessRef.current?.isMuted ?? true
+        setIsMuted(businessMuteState)
+        console.log('🔄 Synced React mute state with business layer:', businessMuteState)
+        
         // Clean up preview first
         if (previewVideoRef.current) {
           previewVideoRef.current.srcObject = null
@@ -141,7 +151,7 @@ export default function VideoCall() {
         }
         
         setIsInPreview(false)
-        setIsInCall(true)
+      setIsInCall(true)
         setIsLoading(false)
       }, 1500) // Show preview for 1.5 seconds after everything is ready
       
@@ -400,7 +410,7 @@ export default function VideoCall() {
               {error && (
                 <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-4 py-3 rounded mb-4">
                   <div className="whitespace-pre-line text-sm leading-relaxed">
-                    {error}
+                  {error}
                   </div>
                 </div>
               )}
@@ -518,7 +528,7 @@ export default function VideoCall() {
             <div className="w-full md:w-80 bg-gray-800 border-t md:border-t-0 md:border-l border-gray-700 flex flex-col max-h-[40vh] md:max-h-none">
               <div className="p-3 md:p-4 border-b border-gray-700">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium">Chat</h3>
+                <h3 className="text-white font-medium">Chat</h3>
                   <button
                     onClick={() => setIsChatOpen(false)}
                     className="md:hidden text-gray-400 hover:text-white"

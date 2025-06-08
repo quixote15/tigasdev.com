@@ -1,5 +1,5 @@
 class VideoCallBusiness {
-    constructor({ roomId, media, view, socketBuilder, peerBuilder }) {
+    constructor({ roomId, media, view, socketBuilder, peerBuilder, initialMuteState = true }) {
         this.roomId = roomId
         this.media = media
         this.view = view
@@ -12,7 +12,7 @@ class VideoCallBusiness {
         this.peers = new Map()
         this.localPeerId = null // Track our own peer ID
         this.isRecording = false
-        this.isMuted = true // Start muted by default
+        this.isMuted = initialMuteState // Use provided initial mute state
         this.isVideoOn = true
 
         // Callback handlers
@@ -45,17 +45,17 @@ class VideoCallBusiness {
             await this._checkMobileSupport()
             
             // Get local stream with mobile optimizations
-            this.currentStream = await this.media.getCamera()
-            
+        this.currentStream = await this.media.getCamera()
+
             // Mute local audio by default
             this._applyInitialMuteState()
 
             // Initialize peer first to get our ID
-            this.currentPeer = await this.peerBuilder
-                .setOnError(this.onPeerError())
-                .setOnConnectionOpened(this.onPeerConnectionOpened())
-                .setOnCallReceived(this.onPeerCallReceived())
-                .setOnPeerStreamReceived(this.onPeerStreamReceived())
+        this.currentPeer = await this.peerBuilder
+            .setOnError(this.onPeerError())
+            .setOnConnectionOpened(this.onPeerConnectionOpened())
+            .setOnCallReceived(this.onPeerCallReceived())
+            .setOnPeerStreamReceived(this.onPeerStreamReceived())
                 .setOnCallError(this.onCallError())
                 .setOnCallClose(this.onCallClose())
                 .build()
@@ -87,12 +87,17 @@ class VideoCallBusiness {
 
     addSelfToParticipants(peerId) {
         console.log('👤 Adding self to participants:', peerId)
+        console.log('👤 Current peers before adding self:', Array.from(this.peers.keys()))
+        
         // Add ourselves to the peers map to prevent duplication
         this.peers.set(peerId, { 
             isSelf: true, 
             stream: this.currentStream,
             connectTime: Date.now() 
         })
+        
+        console.log('👤 Peers after adding self:', Array.from(this.peers.keys()))
+        console.log('👤 Peers size:', this.peers.size)
         
         // Update participant count
         this.setParticipantsCount(this.peers.size)
@@ -110,7 +115,7 @@ class VideoCallBusiness {
                 .setOnUserConnected(this.onUserConnected())
                 .setOnUserDisconnected(this.onUserDisconnected())
                 .setOnChatMessage(this.onChatMessage())
-                .build()
+            .build()
 
             // Wait for socket to connect
             await this._waitForSocketConnection()
@@ -140,7 +145,7 @@ class VideoCallBusiness {
             this.socket.emit('join-room', this.roomId, this.localPeerId)
             
             console.log('✅ Video call initialization completed')
-            return this
+        return this
         } catch (error) {
             console.error('❌ Error completing initialization:', error)
             throw error
@@ -203,11 +208,17 @@ class VideoCallBusiness {
                 console.log('🔧 Extracted actual user ID:', actualUserId)
             }
             
-            // Check if this user is already in our participants (including ourselves)
-            if (this.peers.has(actualUserId)) {
+            // Enhanced self-detection: check if this user is already in our participants (including ourselves)
+            // Also check if this is our own peer ID to prevent self-connection
+            if (this.peers.has(actualUserId) || actualUserId === this.localPeerId || actualUserId === this.currentPeer?.id) {
+                if (actualUserId === this.localPeerId || actualUserId === this.currentPeer?.id) {
+                    console.log('⚠️ Ignoring self-connection event (peer ID match):', actualUserId)
+                    return
+                }
+                
                 const peerData = this.peers.get(actualUserId)
                 if (peerData.isSelf) {
-                    console.log('⚠️ Ignoring self-connection event for:', actualUserId)
+                    console.log('⚠️ Ignoring self-connection event (isSelf flag):', actualUserId)
                 } else {
                     console.log('⚠️ User already connected, ignoring duplicate:', actualUserId)
                 }
@@ -345,7 +356,7 @@ class VideoCallBusiness {
 
             try {
                 console.log('📞 Answering call with local stream')
-                call.answer(this.currentStream)
+            call.answer(this.currentStream)
                 call._answered = true // Mark as answered to prevent duplicates
             } catch (error) {
                 console.error('❌ Error answering call:', error)
@@ -356,7 +367,7 @@ class VideoCallBusiness {
 
     onPeerStreamReceived = function () {
         return (call, stream) => {
-            const callerId = call.peer
+            const callerId = call.peer 
             console.log('📺 Received video stream from:', callerId)
             console.log('📺 Stream details:', {
                 active: stream.active,
@@ -376,7 +387,11 @@ class VideoCallBusiness {
                 isSelf: false
             }
             
+            console.log('📺 Current peers before adding caller:', Array.from(this.peers.keys()))
             this.peers.set(callerId, peerData)
+            console.log('📺 Peers after adding caller:', Array.from(this.peers.keys()))
+            console.log('📺 Peers size:', this.peers.size)
+            
             this.view.addVideoStream(callerId, stream, false, this.peers.size)
             this.setParticipantsCount(this.peers.size)
             
@@ -486,15 +501,25 @@ class VideoCallBusiness {
             console.log(`🤝 UserId JSON: ${JSON.stringify(userId)}`)
         }
         
-        // Validate peer IDs and prevent self-connection
+        // Enhanced validation and self-connection prevention
         if (!userId) {
             console.log('⚠️ Invalid peer ID (empty)')
             return
         }
         
-        if (userId === this.currentPeer?.id) {
-            console.log('⚠️ Preventing self-connection attempt for:', userId)
+        // Multiple checks to prevent self-connection
+        if (userId === this.currentPeer?.id || userId === this.localPeerId) {
+            console.log('⚠️ Preventing self-connection attempt for:', userId, '(matches local peer ID)')
             return
+        }
+        
+        // Check if this is already marked as self in peers map
+        if (this.peers.has(userId)) {
+            const peerData = this.peers.get(userId)
+            if (peerData.isSelf) {
+                console.log('⚠️ Preventing self-connection attempt for:', userId, '(marked as self)')
+                return
+            }
         }
         
         // Ensure userId is a string
@@ -604,7 +629,11 @@ class VideoCallBusiness {
                 isSelf: false
             }
             
+            console.log('📞 Current peers before adding outgoing call:', Array.from(this.peers.keys()))
             this.peers.set(userId, peerData)
+            console.log('📞 Peers after adding outgoing call:', Array.from(this.peers.keys()))
+            console.log('📞 Peers size:', this.peers.size)
+            
             this.setParticipantsCount(this.peers.size)
             
         } catch (error) {
@@ -1344,12 +1373,17 @@ class VideoCallBusiness {
 
     // Apply initial mute state to local stream
     _applyInitialMuteState() {
-        if (this.currentStream && this.isMuted) {
+        console.log('🔇 Applying initial mute state:', this.isMuted)
+        if (this.currentStream) {
             const audioTrack = this.currentStream.getAudioTracks()[0]
             if (audioTrack) {
-                audioTrack.enabled = false
-                console.log('🔇 Local audio muted by default on initialization')
+                audioTrack.enabled = !this.isMuted
+                console.log(`🔇 Local audio ${this.isMuted ? 'muted' : 'unmuted'} on initialization`)
+            } else {
+                console.warn('⚠️ No audio track found to apply mute state')
             }
+        } else {
+            console.warn('⚠️ No current stream available to apply mute state')
         }
     }
 

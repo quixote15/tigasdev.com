@@ -109,7 +109,7 @@ class PeerBuilder {
             peer.socket.on('disconnect', () => {
                 console.log('🔌 PeerJS socket disconnected')
             })
-            
+
             peer.socket.on('error', (error) => {
                 console.error('🔌 PeerJS socket error:', error)
             })
