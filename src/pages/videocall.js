@@ -25,6 +25,7 @@ export default function VideoCall() {
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [diagnostics, setDiagnostics] = useState(null)
@@ -37,6 +38,7 @@ export default function VideoCall() {
   const videoGridRef = useRef(null)
   const previewVideoRef = useRef(null)
   const businessRef = useRef(null)
+  const messagesEndRef = useRef(null)
 
   useEffect(() => {
     // Get room ID from URL or generate one
@@ -245,10 +247,38 @@ export default function VideoCall() {
 
   const handleSendMessage = () => {
     if (businessRef.current && newMessage.trim()) {
-      businessRef.current.sendMessage(newMessage)
+      businessRef.current.sendMessage(newMessage.trim())
       setNewMessage('')
+      
+      // Auto-scroll to bottom after sending
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
     }
   }
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+    
+    // Clear unread count when chat is open
+    if (isChatOpen) {
+      setUnreadCount(0)
+    }
+  }, [messages, isChatOpen])
+
+  // Handle new message notifications
+  useEffect(() => {
+    if (!isChatOpen && messages.length > 0) {
+      // Only count new messages (not our own messages)
+      const lastMessage = messages[messages.length - 1]
+      if (lastMessage && lastMessage.sender !== 'You') {
+        setUnreadCount(prev => prev + 1)
+      }
+    }
+  }, [messages, isChatOpen])
 
   const runDiagnostics = async () => {
     setIsLoading(true)
@@ -533,45 +563,102 @@ export default function VideoCall() {
             />
           </div>
 
-          {/* Chat Sidebar - Full width on mobile, sidebar on desktop */}
+          {/* Enhanced Chat Sidebar */}
           {isChatOpen && (
-            <div className="w-full md:w-80 bg-gray-800 border-t md:border-t-0 md:border-l border-gray-700 flex flex-col max-h-[40vh] md:max-h-none">
-              <div className="p-3 md:p-4 border-b border-gray-700">
+            <div className="w-full md:w-80 lg:w-96 bg-gray-800 border-t md:border-t-0 md:border-l border-gray-700 flex flex-col max-h-[40vh] md:max-h-none">
+              {/* Chat Header */}
+              <div className="p-3 md:p-4 border-b border-gray-700 bg-gray-750">
                 <div className="flex items-center justify-between">
-                <h3 className="text-white font-medium">Chat</h3>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-white font-medium">Chat</h3>
+                    <div className="flex items-center space-x-1 text-xs text-gray-400">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                      </svg>
+                      <span>{participantsCount} {participantsCount === 1 ? 'participant' : 'participants'}</span>
+                    </div>
+                  </div>
                   <button
                     onClick={() => setIsChatOpen(false)}
-                    className="md:hidden text-gray-400 hover:text-white"
+                    className="text-gray-400 hover:text-white transition-colors p-1 rounded"
+                    title="Close chat"
                   >
-                    ✕
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
-                {messages.map((msg, index) => (
-                  <div key={index} className="text-sm">
-                    <div className="text-gray-300 font-medium">{msg.sender}</div>
-                    <div className="text-white">{msg.text}</div>
-                    <div className="text-gray-500 text-xs">{msg.timestamp}</div>
+
+              {/* Messages Container */}
+              <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 scroll-smooth">
+                {messages.length === 0 ? (
+                  <div className="text-center text-gray-400 text-sm py-8">
+                    <svg className="w-8 h-8 mx-auto mb-2 opacity-50" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                    </svg>
+                    <p>No messages yet</p>
+                    <p className="text-xs mt-1">Send a message to start the conversation</p>
                   </div>
-                ))}
+                ) : (
+                  messages.map((msg, index) => {
+                    const isOwnMessage = msg.sender === 'You'
+                    const previousMessage = index > 0 ? messages[index - 1] : null
+                    const showSender = !previousMessage || previousMessage.sender !== msg.sender
+                    
+                    return (
+                      <div key={index} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] ${isOwnMessage ? 'bg-blue-600' : 'bg-gray-700'} rounded-lg px-3 py-2`}>
+                          {showSender && !isOwnMessage && (
+                            <div className="text-blue-300 font-medium text-xs mb-1">{msg.sender}</div>
+                          )}
+                          <div className="text-white text-sm break-words">{msg.text}</div>
+                          <div className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-200' : 'text-gray-400'}`}>
+                            {msg.timestamp}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+                {/* Auto-scroll anchor */}
+                <div ref={messagesEndRef} />
               </div>
-              <div className="p-3 md:p-4 border-t border-gray-700">
-                <div className="flex">
+
+              {/* Message Input */}
+              <div className="p-3 md:p-4 border-t border-gray-700 bg-gray-750">
+                <div className="flex space-x-2">
                   <input
                     type="text"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-l-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleSendMessage()
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                     placeholder="Type a message..."
+                    maxLength={500}
                   />
                   <button
                     onClick={handleSendMessage}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-4 py-2 rounded-r-md transition duration-200 text-sm"
+                    disabled={!newMessage.trim()}
+                    className={`px-4 py-2 rounded-lg transition duration-200 text-sm font-medium ${
+                      newMessage.trim() 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    }`}
+                    title="Send message"
                   >
-                    Send
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
                   </button>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Press Enter to send • {newMessage.length}/500 characters
                 </div>
               </div>
             </div>
@@ -628,17 +715,23 @@ export default function VideoCall() {
               </svg>
             </button>
 
-            {/* Chat Button */}
+            {/* Chat Button with Notification Badge */}
             <button
               onClick={() => setIsChatOpen(!isChatOpen)}
-              className={`p-2 md:p-3 rounded-full transition duration-200 ${
+              className={`relative p-2 md:p-3 rounded-full transition duration-200 ${
                 isChatOpen ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
               }`}
-              title="Toggle chat"
+              title={`${isChatOpen ? 'Close' : 'Open'} chat${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
             >
               <svg className="w-5 h-5 md:w-6 md:h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
               </svg>
+              {/* Unread Message Badge */}
+              {unreadCount > 0 && !isChatOpen && (
+                <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center animate-pulse">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </div>
+              )}
             </button>
 
             {/* Debug Toggle Button - Hidden on very small screens */}
