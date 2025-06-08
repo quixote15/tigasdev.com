@@ -371,6 +371,7 @@ class VideoCallBusiness {
                 stream,
                 connectTime: Date.now(),
                 lastPingReceived: Date.now(),
+                lastDataReceived: Date.now(),
                 dataChannelClosed: false,
                 isSelf: false
             }
@@ -598,6 +599,7 @@ class VideoCallBusiness {
                 attempt,
                 connectTime: Date.now(),
                 lastPingReceived: Date.now(),
+                lastDataReceived: Date.now(),
                 dataChannelClosed: false,
                 isSelf: false
             }
@@ -726,6 +728,7 @@ class VideoCallBusiness {
         let pingInterval = null
         let reconnectAttempts = 0
         const maxReconnectAttempts = 3
+        let consecutiveFailures = 0 // Track consecutive failures to avoid false positives
 
         // Monitor connection state changes with enhanced handling
         pc.oniceconnectionstatechange = () => {
@@ -738,16 +741,24 @@ class VideoCallBusiness {
                 case 'completed':
                     status = 'connected'
                     reconnectAttempts = 0 // Reset on successful connection
+                    consecutiveFailures = 0 // Reset consecutive failures
                     break
                 case 'disconnected':
                     status = 'disconnected'
-                    console.warn(`⚠️ Peer ${peerId} disconnected but attempting to reconnect...`)
-                    this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                    console.warn(`⚠️ Peer ${peerId} ICE disconnected - monitoring for recovery...`)
+                    // Don't immediately trigger reconnection - ICE can recover
+                    consecutiveFailures++
+                    
+                    // Only trigger reconnection after multiple consecutive failures
+                    if (consecutiveFailures >= 3) {
+                        console.warn(`⚠️ Peer ${peerId} has ${consecutiveFailures} consecutive failures, triggering recovery`)
+                        this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                    }
                     break
                 case 'failed':
                 case 'closed':
                     status = 'failed'
-                    console.error(`❌ Peer ${peerId} connection failed/closed`)
+                    console.error(`❌ Peer ${peerId} connection failed/closed - definitive failure`)
                     this._handlePeerConnectionFailed(peerId, call, reconnectAttempts)
                     break
                 default:
@@ -757,17 +768,23 @@ class VideoCallBusiness {
             this.view.updateConnectionStatus(peerId, status)
         }
 
-        // Monitor peer connection state (newer API)
+        // Monitor peer connection state (newer API) - more conservative
         if (pc.connectionState !== undefined) {
             pc.onconnectionstatechange = () => {
                 const state = pc.connectionState
                 console.log(`🔗 Peer Connection State for ${peerId}:`, state)
                 
                 switch (state) {
+                    case 'connected':
+                        consecutiveFailures = 0 // Reset on successful connection
+                        break
                     case 'disconnected':
+                        // Don't immediately trigger - peer connection can recover
+                        console.log(`🔗 Peer ${peerId} temporarily disconnected - waiting for recovery`)
+                        break
                     case 'failed':
-                        console.warn(`⚠️ Peer ${peerId} connection ${state}`)
-                        this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                        console.error(`❌ Peer ${peerId} connection definitively failed`)
+                        this._handlePeerConnectionFailed(peerId, call, reconnectAttempts)
                         break
                     case 'closed':
                         console.log(`🔒 Peer ${peerId} connection closed`)
@@ -777,42 +794,49 @@ class VideoCallBusiness {
             }
         }
 
-        // Monitor data channel state
-        let dataChannelMonitor = null
-        
-        // Enhanced connection monitoring
+        // Much more conservative connection monitoring
         const connectionHealthCheck = () => {
             // Check if peer still exists in our map
             if (!this.peers.has(peerId)) {
                 console.log(`🧹 Peer ${peerId} no longer in peers map, stopping monitoring`)
                 clearInterval(statsInterval)
-                clearInterval(connectionHealthCheck)
+                clearInterval(healthCheckInterval)
                 return
             }
 
             const peerData = this.peers.get(peerId)
             
-            // Check if call is still active
+            // Only check for definitive failures, not temporary issues
             if (peerData.call && peerData.call.peerConnection) {
                 const pc = peerData.call.peerConnection
                 
-                // If connection is failed/closed but we haven't cleaned up yet
+                // Only trigger cleanup on confirmed failed/closed states
                 if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-                    console.warn(`🔄 Detected stale connection for ${peerId}, triggering cleanup`)
+                    console.warn(`🔄 Confirmed connection failure for ${peerId} (${pc.iceConnectionState})`)
                     this._handlePeerConnectionFailed(peerId, call, reconnectAttempts)
+                    return
                 }
                 
-                // Check if we haven't received data for too long (data channel ping)
+                // Much more lenient ping check - only after 60 seconds of no response
                 const now = Date.now()
-                if (peerData.lastPingReceived && (now - peerData.lastPingReceived) > 30000) {
-                    console.warn(`⚠️ No ping response from ${peerId} for 30s, connection may be dead`)
-                    this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                if (peerData.lastPingReceived && (now - peerData.lastPingReceived) > 60000) {
+                    console.warn(`⚠️ No ping response from ${peerId} for 60s - checking if connection is truly dead`)
+                    
+                    // Double check with connection state before triggering reconnection
+                    if (pc.iceConnectionState === 'disconnected' || pc.connectionState === 'disconnected') {
+                        console.warn(`🔄 Confirmed ping timeout with disconnected state for ${peerId}`)
+                        this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                    } else {
+                        console.log(`ℹ️ Ping timeout but connection appears stable for ${peerId}`)
+                        // Reset ping timer to avoid false positives
+                        peerData.lastPingReceived = now
+                    }
                 }
             }
         }
 
-        // Start connection health monitoring
-        const healthCheckInterval = setInterval(connectionHealthCheck, 10000) // Check every 10 seconds
+        // Less frequent health checks to reduce false positives
+        const healthCheckInterval = setInterval(connectionHealthCheck, 30000) // Check every 30 seconds instead of 10
 
         // Monitor connection quality with RTCStats
         const monitorStats = async () => {
@@ -844,6 +868,7 @@ class VideoCallBusiness {
                         
                         if (bitrate > 0) { // Only update if we have a valid bitrate
                             this.view.updateStreamRate(peerId, bitrate)
+                            consecutiveFailures = 0 // Reset on successful data reception
                         }
                     }
                     
@@ -851,6 +876,9 @@ class VideoCallBusiness {
                     if (peerData) {
                         peerData.lastBytesReceived = inboundRtp.bytesReceived
                         peerData.lastStatsTime = now
+                        
+                        // Reset the data reception timer since we got data
+                        peerData.lastDataReceived = now
                     }
                 }
 
@@ -860,27 +888,45 @@ class VideoCallBusiness {
                     this.view.updatePing(peerId, pingMs)
                 }
 
-                // Check for connection health based on stats
+                // Much more conservative data reception check - only after 45 seconds
                 if (!inboundRtp || inboundRtp.bytesReceived === 0) {
                     const peerData = this.peers.get(peerId)
                     if (peerData && peerData.connectTime) {
                         const timeSinceConnect = Date.now() - peerData.connectTime
-                        // If no bytes received after 15 seconds, something is wrong
-                        if (timeSinceConnect > 15000) {
-                            console.warn(`⚠️ No data received from ${peerId} after ${timeSinceConnect}ms`)
-                            this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                        // Only trigger after 45 seconds AND confirm connection state is bad
+                        if (timeSinceConnect > 45000) {
+                            const pc = peerData.call?.peerConnection
+                            if (pc && (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed')) {
+                                console.warn(`⚠️ No data received from ${peerId} for ${timeSinceConnect}ms and connection is ${pc.iceConnectionState}`)
+                                this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                            } else {
+                                console.log(`ℹ️ No initial data from ${peerId} but connection appears stable (${pc?.iceConnectionState})`)
+                            }
                         }
                     }
+                } else {
+                    // Successfully receiving data - reset failure counters
+                    consecutiveFailures = 0
                 }
 
             } catch (error) {
                 console.warn(`⚠️ Failed to get stats for ${peerId}:`, error)
-                // If we can't get stats, the connection might be dead
-                this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                
+                // Only trigger reconnection on stats failure if we have other indicators of problems
+                const peerData = this.peers.get(peerId)
+                if (peerData?.call?.peerConnection) {
+                    const pc = peerData.call.peerConnection
+                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+                        console.warn(`⚠️ Stats failure combined with bad connection state for ${peerId}`)
+                        this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                    } else {
+                        console.log(`ℹ️ Stats collection failed for ${peerId} but connection appears stable`)
+                    }
+                }
             }
         }
 
-        // Start monitoring with more frequent updates
+        // Start monitoring with more frequent updates for stats, but conservative reconnection logic
         const statsInterval = setInterval(() => {
             if (this.peers.has(peerId)) {
                 monitorStats()
@@ -889,34 +935,55 @@ class VideoCallBusiness {
                 clearInterval(healthCheckInterval)
                 if (pingInterval) clearInterval(pingInterval)
             }
-        }, 5000) // Update every 5 seconds
+        }, 5000) // Keep 5 second stats updates for UI
 
         // Enhanced ping measurement using data channel
         this._setupPingMeasurement(peerId, call)
     }
 
-    // Handle peer disconnection while socket is still connected
+    // Handle peer disconnection while socket is still connected - more conservative approach
     _handlePeerDisconnected(peerId, call, reconnectAttempts) {
-        console.warn(`🔧 Handling peer disconnection for ${peerId} (attempt ${reconnectAttempts})`)
+        console.warn(`🔧 Evaluating peer disconnection for ${peerId} (attempt ${reconnectAttempts})`)
         
-        // Update UI to show disconnected state
-        this.view.updateConnectionStatus(peerId, 'disconnected')
-        
-        // Check if socket is still connected
-        if (this.socket && this.socket.connected) {
-            console.log(`📡 Socket still connected, attempting peer reconnection for ${peerId}`)
+        // First, verify this is actually a disconnection and not a temporary issue
+        const peerData = this.peers.get(peerId)
+        if (peerData?.call?.peerConnection) {
+            const pc = peerData.call.peerConnection
+            const iceState = pc.iceConnectionState
+            const connectionState = pc.connectionState
             
-            // Attempt to reconnect if we haven't exceeded max attempts
-            if (reconnectAttempts < 3) {
-                setTimeout(() => {
-                    this._attemptPeerReconnection(peerId, reconnectAttempts + 1)
-                }, (reconnectAttempts + 1) * 2000) // Exponential backoff: 2s, 4s, 6s
+            console.log(`🔍 Connection verification for ${peerId}: ICE=${iceState}, PC=${connectionState}`)
+            
+            // Only proceed with reconnection if we have confirmed bad states
+            if (iceState === 'failed' || connectionState === 'failed' || 
+                (iceState === 'disconnected' && connectionState === 'disconnected')) {
+                
+                console.warn(`✅ Confirmed disconnection for ${peerId} - proceeding with recovery`)
+                
+                // Update UI to show disconnected state
+                this.view.updateConnectionStatus(peerId, 'disconnected')
+                
+                // Check if socket is still connected and we haven't exceeded retry attempts
+                if (this.socket && this.socket.connected && reconnectAttempts < 2) { // Reduced from 3 to 2 attempts
+                    console.log(`📡 Socket still connected, attempting careful peer reconnection for ${peerId}`)
+                    
+                    setTimeout(() => {
+                        this._attemptPeerReconnection(peerId, reconnectAttempts + 1)
+                    }, (reconnectAttempts + 1) * 3000) // Longer backoff: 3s, 6s
+                } else {
+                    console.error(`❌ Max reconnection attempts reached or socket down for ${peerId}, removing peer`)
+                    this._cleanupPeerConnection(peerId)
+                }
             } else {
-                console.error(`❌ Max reconnection attempts reached for ${peerId}, removing peer`)
-                this._cleanupPeerConnection(peerId)
+                console.log(`ℹ️ Connection appears recoverable for ${peerId} (ICE=${iceState}, PC=${connectionState}) - skipping reconnection`)
+                // Update status to show monitoring instead of disconnected
+                this.view.updateConnectionStatus(peerId, 'connecting')
+                
+                // Reset ping timer to give connection more time to recover
+                peerData.lastPingReceived = Date.now()
             }
         } else {
-            console.log(`📡 Socket also disconnected, waiting for socket reconnection`)
+            console.log(`📡 No peer connection data available for ${peerId}, cleaning up`)
             this._cleanupPeerConnection(peerId)
         }
     }
