@@ -116,6 +116,9 @@ class VideoCallBusiness {
             // Start monitoring local stats
             this._startLocalMonitoring()
             
+            // Start socket monitoring for peer-socket sync
+            this._startSocketMonitoring()
+            
             // Join the room now that everything is set up
             console.log('📡 Emitting join-room event...')
             console.log('📡 Room ID:', this.roomId)
@@ -350,7 +353,17 @@ class VideoCallBusiness {
                 id: stream.id
             })
             
-            this.peers.set(callerId, { call, stream, connectTime: Date.now() })
+            // Enhanced peer data tracking for incoming calls
+            const peerData = {
+                call,
+                stream,
+                connectTime: Date.now(),
+                lastPingReceived: Date.now(),
+                dataChannelClosed: false,
+                isSelf: false
+            }
+            
+            this.peers.set(callerId, peerData)
             this.view.addVideoStream(callerId, stream, false, this.peers.size)
             this.setParticipantsCount(this.peers.size)
             
@@ -567,7 +580,17 @@ class VideoCallBusiness {
                 }
             })
             
-            this.peers.set(userId, { call, attempt })
+            // Enhanced peer data tracking
+            const peerData = {
+                call,
+                attempt,
+                connectTime: Date.now(),
+                lastPingReceived: Date.now(),
+                dataChannelClosed: false,
+                isSelf: false
+            }
+            
+            this.peers.set(userId, peerData)
             this.setParticipantsCount(this.peers.size)
             
         } catch (error) {
@@ -689,8 +712,10 @@ class VideoCallBusiness {
         const pc = call.peerConnection
         let lastPingTime = 0
         let pingInterval = null
+        let reconnectAttempts = 0
+        const maxReconnectAttempts = 3
 
-        // Monitor connection state changes
+        // Monitor connection state changes with enhanced handling
         pc.oniceconnectionstatechange = () => {
             const state = pc.iceConnectionState
             console.log(`🧊 ICE Connection State for ${peerId}:`, state)
@@ -700,13 +725,18 @@ class VideoCallBusiness {
                 case 'connected':
                 case 'completed':
                     status = 'connected'
+                    reconnectAttempts = 0 // Reset on successful connection
                     break
                 case 'disconnected':
                     status = 'disconnected'
+                    console.warn(`⚠️ Peer ${peerId} disconnected but attempting to reconnect...`)
+                    this._handlePeerDisconnected(peerId, call, reconnectAttempts)
                     break
                 case 'failed':
                 case 'closed':
                     status = 'failed'
+                    console.error(`❌ Peer ${peerId} connection failed/closed`)
+                    this._handlePeerConnectionFailed(peerId, call, reconnectAttempts)
                     break
                 default:
                     status = 'connecting'
@@ -714,6 +744,63 @@ class VideoCallBusiness {
             
             this.view.updateConnectionStatus(peerId, status)
         }
+
+        // Monitor peer connection state (newer API)
+        if (pc.connectionState !== undefined) {
+            pc.onconnectionstatechange = () => {
+                const state = pc.connectionState
+                console.log(`🔗 Peer Connection State for ${peerId}:`, state)
+                
+                switch (state) {
+                    case 'disconnected':
+                    case 'failed':
+                        console.warn(`⚠️ Peer ${peerId} connection ${state}`)
+                        this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                        break
+                    case 'closed':
+                        console.log(`🔒 Peer ${peerId} connection closed`)
+                        this._cleanupPeerConnection(peerId)
+                        break
+                }
+            }
+        }
+
+        // Monitor data channel state
+        let dataChannelMonitor = null
+        
+        // Enhanced connection monitoring
+        const connectionHealthCheck = () => {
+            // Check if peer still exists in our map
+            if (!this.peers.has(peerId)) {
+                console.log(`🧹 Peer ${peerId} no longer in peers map, stopping monitoring`)
+                clearInterval(statsInterval)
+                clearInterval(connectionHealthCheck)
+                return
+            }
+
+            const peerData = this.peers.get(peerId)
+            
+            // Check if call is still active
+            if (peerData.call && peerData.call.peerConnection) {
+                const pc = peerData.call.peerConnection
+                
+                // If connection is failed/closed but we haven't cleaned up yet
+                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+                    console.warn(`🔄 Detected stale connection for ${peerId}, triggering cleanup`)
+                    this._handlePeerConnectionFailed(peerId, call, reconnectAttempts)
+                }
+                
+                // Check if we haven't received data for too long (data channel ping)
+                const now = Date.now()
+                if (peerData.lastPingReceived && (now - peerData.lastPingReceived) > 30000) {
+                    console.warn(`⚠️ No ping response from ${peerId} for 30s, connection may be dead`)
+                    this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                }
+            }
+        }
+
+        // Start connection health monitoring
+        const healthCheckInterval = setInterval(connectionHealthCheck, 10000) // Check every 10 seconds
 
         // Monitor connection quality with RTCStats
         const monitorStats = async () => {
@@ -761,8 +848,23 @@ class VideoCallBusiness {
                     this.view.updatePing(peerId, pingMs)
                 }
 
+                // Check for connection health based on stats
+                if (!inboundRtp || inboundRtp.bytesReceived === 0) {
+                    const peerData = this.peers.get(peerId)
+                    if (peerData && peerData.connectTime) {
+                        const timeSinceConnect = Date.now() - peerData.connectTime
+                        // If no bytes received after 15 seconds, something is wrong
+                        if (timeSinceConnect > 15000) {
+                            console.warn(`⚠️ No data received from ${peerId} after ${timeSinceConnect}ms`)
+                            this._handlePeerDisconnected(peerId, call, reconnectAttempts)
+                        }
+                    }
+                }
+
             } catch (error) {
                 console.warn(`⚠️ Failed to get stats for ${peerId}:`, error)
+                // If we can't get stats, the connection might be dead
+                this._handlePeerDisconnected(peerId, call, reconnectAttempts)
             }
         }
 
@@ -772,74 +874,159 @@ class VideoCallBusiness {
                 monitorStats()
             } else {
                 clearInterval(statsInterval)
+                clearInterval(healthCheckInterval)
                 if (pingInterval) clearInterval(pingInterval)
             }
-        }, 5000) // Update every 5 seconds instead of 30
+        }, 5000) // Update every 5 seconds
 
-        // Simple ping measurement using data channel (if available)
+        // Enhanced ping measurement using data channel
         this._setupPingMeasurement(peerId, call)
     }
 
-    _setupPingMeasurement(peerId, call) {
-        try {
-            if (!call.peerConnection) return
-
-            const pc = call.peerConnection
-            const dataChannel = pc.createDataChannel('ping', { ordered: true })
+    // Handle peer disconnection while socket is still connected
+    _handlePeerDisconnected(peerId, call, reconnectAttempts) {
+        console.warn(`🔧 Handling peer disconnection for ${peerId} (attempt ${reconnectAttempts})`)
+        
+        // Update UI to show disconnected state
+        this.view.updateConnectionStatus(peerId, 'disconnected')
+        
+        // Check if socket is still connected
+        if (this.socket && this.socket.connected) {
+            console.log(`📡 Socket still connected, attempting peer reconnection for ${peerId}`)
             
-            dataChannel.onopen = () => {
-                console.log(`📡 Data channel opened for ${peerId}`)
-                
-                // Send ping every 10 seconds for more responsive updates
-                const pingInterval = setInterval(() => {
-                    if (dataChannel.readyState === 'open') {
-                        const pingTime = Date.now()
-                        dataChannel.send(JSON.stringify({ type: 'ping', timestamp: pingTime }))
-                    } else {
-                        clearInterval(pingInterval)
-                    }
-                }, 10000) // Reduced from 30 seconds to 10 seconds
+            // Attempt to reconnect if we haven't exceeded max attempts
+            if (reconnectAttempts < 3) {
+                setTimeout(() => {
+                    this._attemptPeerReconnection(peerId, reconnectAttempts + 1)
+                }, (reconnectAttempts + 1) * 2000) // Exponential backoff: 2s, 4s, 6s
+            } else {
+                console.error(`❌ Max reconnection attempts reached for ${peerId}, removing peer`)
+                this._cleanupPeerConnection(peerId)
             }
-
-            dataChannel.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data)
-                    if (data.type === 'ping') {
-                        // Echo back the ping
-                        dataChannel.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp }))
-                    } else if (data.type === 'pong') {
-                        // Calculate ping time
-                        const pingMs = Date.now() - data.timestamp
-                        this.view.updatePing(peerId, pingMs)
-                    }
-                } catch (error) {
-                    console.warn('Failed to parse data channel message:', error)
-                }
-            }
-
-            // Handle incoming data channels
-            pc.ondatachannel = (event) => {
-                const incomingChannel = event.channel
-                incomingChannel.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data)
-                        if (data.type === 'ping') {
-                            // Echo back the ping
-                            incomingChannel.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp }))
-                        } else if (data.type === 'pong') {
-                            // Calculate ping time
-                            const pingMs = Date.now() - data.timestamp
-                            this.view.updatePing(peerId, pingMs)
-                        }
-                    } catch (error) {
-                        console.warn('Failed to parse data channel message:', error)
-                    }
-                }
-            }
-
-        } catch (error) {
-            console.warn(`⚠️ Failed to setup ping measurement for ${peerId}:`, error)
+        } else {
+            console.log(`📡 Socket also disconnected, waiting for socket reconnection`)
+            this._cleanupPeerConnection(peerId)
         }
+    }
+
+    // Handle peer connection failure
+    _handlePeerConnectionFailed(peerId, call, reconnectAttempts) {
+        console.error(`❌ Peer connection failed for ${peerId}`)
+        
+        // Update UI to show failed state
+        this.view.updateConnectionStatus(peerId, 'failed')
+        
+        // Only attempt reconnection if socket is still connected
+        if (this.socket && this.socket.connected && reconnectAttempts < 3) {
+            console.log(`🔄 Attempting to reestablish connection to ${peerId}`)
+            setTimeout(() => {
+                this._attemptPeerReconnection(peerId, reconnectAttempts + 1)
+            }, 3000) // Wait 3 seconds before retry
+        } else {
+            console.log(`🧹 Cleaning up failed connection to ${peerId}`)
+            this._cleanupPeerConnection(peerId)
+        }
+    }
+
+    // Attempt to reconnect to a specific peer
+    _attemptPeerReconnection(peerId, reconnectAttempts) {
+        console.log(`🔄 Attempting peer reconnection to ${peerId} (attempt ${reconnectAttempts})`)
+        
+        // Check if peer is still in our map and socket is connected
+        if (!this.socket || !this.socket.connected) {
+            console.log(`📡 Socket disconnected, aborting peer reconnection to ${peerId}`)
+            return
+        }
+
+        // Clean up old connection first
+        if (this.peers.has(peerId)) {
+            const peerData = this.peers.get(peerId)
+            if (peerData.call && peerData.call.close) {
+                peerData.call.close()
+            }
+        }
+
+        // Update status to reconnecting
+        this.view.updateConnectionStatus(peerId, 'reconnecting')
+        
+        // Attempt new connection
+        setTimeout(() => {
+            this.connectToNewUser(peerId)
+        }, 1000)
+    }
+
+    // Clean up peer connection properly
+    _cleanupPeerConnection(peerId) {
+        console.log(`🧹 Cleaning up peer connection for ${peerId}`)
+        
+        if (this.peers.has(peerId)) {
+            const peerData = this.peers.get(peerId)
+            
+            // Close the call if it exists
+            if (peerData.call && typeof peerData.call.close === 'function') {
+                try {
+                    peerData.call.close()
+                } catch (error) {
+                    console.warn(`⚠️ Error closing call for ${peerId}:`, error)
+                }
+            }
+            
+            // Remove from peers map
+            this.peers.delete(peerId)
+            
+            // Remove video element
+            this.view.removeVideoStream(peerId)
+            
+            // Update participant count
+            this.setParticipantsCount(this.peers.size)
+            
+            // Update stats for remaining participants
+            setTimeout(() => {
+                this._updateAllParticipantStats()
+            }, 500)
+            
+            console.log(`✅ Cleaned up peer ${peerId}`)
+        }
+    }
+
+    // Enhanced socket monitoring for peer-socket sync
+    _startSocketMonitoring() {
+        if (!this.socket) return
+
+        this.socket.on('disconnect', () => {
+            console.warn('📡 Socket disconnected, marking all peers as disconnected')
+            
+            // Update all peer statuses to disconnected
+            this.peers.forEach((peerData, peerId) => {
+                if (!peerData.isSelf) {
+                    this.view.updateConnectionStatus(peerId, 'disconnected')
+                }
+            })
+        })
+
+        this.socket.on('reconnect', () => {
+            console.log('📡 Socket reconnected, attempting to reestablish peer connections')
+            
+            // Get list of peers to reconnect to
+            const peersToReconnect = []
+            this.peers.forEach((peerData, peerId) => {
+                if (!peerData.isSelf) {
+                    peersToReconnect.push(peerId)
+                }
+            })
+            
+            // Clear existing peers and try to reconnect
+            peersToReconnect.forEach(peerId => {
+                this._cleanupPeerConnection(peerId)
+            })
+            
+            // Rejoin the room
+            setTimeout(() => {
+                if (this.socket && this.socket.connected && this.localPeerId) {
+                    this.socket.emit('join-room', this.roomId, this.localPeerId)
+                }
+            }, 1000)
+        })
     }
 
     // Start monitoring local user stats
@@ -1084,6 +1271,119 @@ class VideoCallBusiness {
                 audioTrack.enabled = false
                 console.log('🔇 Local audio muted by default on initialization')
             }
+        }
+    }
+
+    _setupPingMeasurement(peerId, call) {
+        try {
+            if (!call.peerConnection) return
+
+            const pc = call.peerConnection
+            const dataChannel = pc.createDataChannel('ping', { ordered: true })
+            
+            dataChannel.onopen = () => {
+                console.log(`📡 Data channel opened for ${peerId}`)
+                
+                // Send ping every 10 seconds for more responsive updates
+                const pingInterval = setInterval(() => {
+                    if (dataChannel.readyState === 'open') {
+                        const pingTime = Date.now()
+                        dataChannel.send(JSON.stringify({ type: 'ping', timestamp: pingTime }))
+                    } else {
+                        clearInterval(pingInterval)
+                    }
+                }, 10000) // Reduced from 30 seconds to 10 seconds
+            }
+
+            dataChannel.onclose = () => {
+                console.warn(`📡 Data channel closed for ${peerId}`)
+                // This might indicate a connection problem
+                const peerData = this.peers.get(peerId)
+                if (peerData) {
+                    peerData.dataChannelClosed = true
+                }
+            }
+
+            dataChannel.onerror = (error) => {
+                console.error(`📡 Data channel error for ${peerId}:`, error)
+            }
+
+            dataChannel.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data)
+                    const peerData = this.peers.get(peerId)
+                    
+                    if (data.type === 'ping') {
+                        // Echo back the ping
+                        dataChannel.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp }))
+                        
+                        // Update last ping received time
+                        if (peerData) {
+                            peerData.lastPingReceived = Date.now()
+                        }
+                    } else if (data.type === 'pong') {
+                        // Calculate ping time
+                        const pingMs = Date.now() - data.timestamp
+                        this.view.updatePing(peerId, pingMs)
+                        
+                        // Update last ping received time
+                        if (peerData) {
+                            peerData.lastPingReceived = Date.now()
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Failed to parse data channel message:', error)
+                }
+            }
+
+            // Handle incoming data channels
+            pc.ondatachannel = (event) => {
+                const incomingChannel = event.channel
+                console.log(`📡 Incoming data channel from ${peerId}:`, incomingChannel.label)
+                
+                incomingChannel.onopen = () => {
+                    console.log(`📡 Incoming data channel opened from ${peerId}`)
+                }
+                
+                incomingChannel.onclose = () => {
+                    console.warn(`📡 Incoming data channel closed from ${peerId}`)
+                }
+                
+                incomingChannel.onerror = (error) => {
+                    console.error(`📡 Incoming data channel error from ${peerId}:`, error)
+                }
+                
+                incomingChannel.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data)
+                        const peerData = this.peers.get(peerId)
+                        
+                        if (data.type === 'ping') {
+                            // Echo back the ping
+                            incomingChannel.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp }))
+                            
+                            // Update last ping received time
+                            if (peerData) {
+                                peerData.lastPingReceived = Date.now()
+                            }
+                        } else if (data.type === 'pong') {
+                            // Calculate ping time
+                            const pingMs = Date.now() - data.timestamp
+                            this.view.updatePing(peerId, pingMs)
+                            
+                            // Update last ping received time
+                            if (peerData) {
+                                peerData.lastPingReceived = Date.now()
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Failed to parse incoming data channel message:', error)
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.warn(`⚠️ Failed to setup ping measurement for ${peerId}:`, error)
         }
     }
 }
