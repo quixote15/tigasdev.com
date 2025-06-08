@@ -2,6 +2,7 @@ class View {
     constructor() {
         this.videoGridRef = null
         this.setParticipantsCount = null
+        
     }
 
     setVideoGridRef(ref) {
@@ -14,18 +15,39 @@ class View {
         return this
     }
 
+    toggleMuteState(userId) {
+        const videoElementWrapper = document.getElementById(userId)
+        if (videoElementWrapper) {
+            const videoElement = videoElementWrapper.querySelector('video')
+            console.log(`🎤 Mute state for ${userId}: ${videoElement.muted}`)
+            console.log(`🎤 Video element: ${videoElement}`)
+            videoElement.muted = !videoElement.muted
+            return videoElement.muted
+        }
+        return false
+    }
+
+    getMuteState(userId) {
+        const videoElementWrapper = document.getElementById(userId)
+        if (videoElementWrapper) {
+            const videoElement = videoElementWrapper.querySelector('video')
+            console.log(`🎤 Mute state for ${userId}: ${videoElement.muted}`)
+            console.log(`🎤 Video element: ${videoElement}`)
+            return videoElement.muted
+        }
+        return false
+    }
+
     addVideoStream(userId, stream, isLocal = false, participantsCount = 1) {
         console.log(`🎬 Adding video stream for ${isLocal ? 'local user' : userId}`)
         console.log(`🎬 UserId type: ${typeof userId}, value: ${userId}`)
         console.log(`🎬 IsLocal: ${isLocal}`)
         
-        // Check for null/undefined userId
         if (!userId) {
             console.error('❌ Cannot add video stream with null/undefined userId:', userId)
             return
         }
         
-        // Retry mechanism for video grid ref
         const attemptAddVideo = (attempt = 1, maxAttempts = 10) => {
             const videoGrid = this.videoGridRef?.current
             
@@ -44,7 +66,6 @@ class View {
 
             console.log(`✅ Video grid ref available, proceeding with video setup for ${userId}`)
 
-            // Check if video already exists (prevent duplicates)
             const existingVideo = document.getElementById(userId)
             if (existingVideo) {
                 console.log(`⚠️ Video for ${userId} already exists, removing old one`)
@@ -55,7 +76,6 @@ class View {
             videoWrapper.className = 'relative bg-gray-800 rounded-lg overflow-hidden w-full h-full flex items-center justify-center group'
             videoWrapper.id = userId
 
-            // Inner container to maintain aspect ratio
             const videoContainer = document.createElement('div')
             videoContainer.className = 'relative w-full h-full aspect-video'
 
@@ -66,7 +86,6 @@ class View {
             video.className = 'w-full h-full object-cover rounded-lg'
             video.srcObject = stream
             
-            // Add event listeners for debugging
             video.addEventListener('loadstart', () => {
                 console.log(`📹 Video loadstart for ${userId}`)
             })
@@ -87,7 +106,6 @@ class View {
                 console.error(`❌ Video error for ${userId}:`, e)
             })
 
-            // Enhanced video play with retry mechanism
             const playVideo = async (attempt = 1, maxAttempts = 5) => {
                 try {
                     console.log(`▶️ Attempting to play video for ${userId} (attempt ${attempt})`)
@@ -105,8 +123,6 @@ class View {
                         setTimeout(() => playVideo(attempt + 1, maxAttempts), 500)
                     } else {
                         console.error(`❌ Video play failed for ${userId} after ${maxAttempts} attempts`)
-                        
-                        // Try user interaction approach for autoplay issues
                         if (error.name === 'NotAllowedError' || error.message.includes('autoplay')) {
                             console.log(`🖱️ Adding click handler for ${userId} due to autoplay policy`)
                             video.addEventListener('click', () => {
@@ -121,7 +137,6 @@ class View {
             nameLabel.className = 'absolute bottom-2 left-2 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full text-sm font-medium transition-opacity group-hover:opacity-100 opacity-90'
             nameLabel.textContent = isLocal ? 'You' : `${userId.substring(0, 10)}`
 
-            // Debug overlay - now more compact and better positioned
             const debugOverlay = document.createElement('div')
             debugOverlay.className = 'absolute top-2 left-2 bg-black bg-opacity-70 text-white p-2 rounded text-xs font-mono max-w-[160px] leading-tight transition-opacity opacity-0 group-hover:opacity-100'
             debugOverlay.id = `debug-${userId}`
@@ -134,28 +149,23 @@ class View {
                 <div><strong>FPS:</strong> <span id="fps-${userId}">--</span></div>
             `
 
-            // Connection status indicator
             const statusIndicator = document.createElement('div')
             statusIndicator.className = 'absolute top-2 right-2 w-3 h-3 rounded-full bg-green-500 transition-colors'
             statusIndicator.id = `indicator-${userId}`
 
-            // Assemble the video container
             videoContainer.appendChild(video)
             videoContainer.appendChild(nameLabel)
             videoContainer.appendChild(debugOverlay)
             videoContainer.appendChild(statusIndicator)
             videoWrapper.appendChild(videoContainer)
 
-            // Start monitoring stream stats
             this._startStreamMonitoring(userId, video, stream, isLocal)
             videoGrid.appendChild(videoWrapper)
 
-            // Wait a bit for the video element to be properly attached, then try to play
             setTimeout(() => {
                 playVideo()
             }, 100)
 
-            // Also try again after a longer delay in case the first attempt fails
             setTimeout(() => {
                 if (video.paused) {
                     console.log(`🔄 Video still paused for ${userId}, retrying...`)
@@ -163,7 +173,6 @@ class View {
                 }
             }, 1000)
 
-            // Update participant count
             if (this.setParticipantsCount) {
                 this.setParticipantsCount(participantsCount)
             }
@@ -171,7 +180,6 @@ class View {
             console.log(`✅ Video element added to DOM for ${userId}`)
         }
 
-        // Start the attempt
         attemptAddVideo()
     }
 
@@ -247,7 +255,6 @@ class View {
             }
         }
 
-        // Start monitoring with more frequent updates
         const statsInterval = setInterval(() => {
             const videoElement = document.getElementById(userId)
             if (videoElement) {
@@ -256,17 +263,14 @@ class View {
                 console.log(`📹 Video element for ${userId} no longer exists, stopping monitoring`)
                 clearInterval(statsInterval)
             }
-        }, 2000) // Update every 2 seconds instead of 30
+        }, 2000)
 
-        // Set initial status
         this.updateConnectionStatus(userId, isLocal ? 'local' : 'connecting')
         
-        // Run initial stats check
         setTimeout(() => {
             updateVideoStats()
         }, 1000)
         
-        // Monitor video events for better status tracking
         video.addEventListener('loadedmetadata', () => {
             console.log(`📹 Video metadata loaded for ${userId}`)
             updateVideoStats()
@@ -293,7 +297,6 @@ class View {
         })
     }
 
-    // Update methods for debug overlay
     updateConnectionStatus(userId, status) {
         const statusElement = document.getElementById(`status-${userId}`)
         const indicatorElement = document.getElementById(`indicator-${userId}`)
@@ -307,7 +310,6 @@ class View {
         }
         
         if (indicatorElement) {
-            // Update visual status indicator
             const colorClass = status === 'connected' ? 'bg-green-500' :
                              status === 'connecting' ? 'bg-yellow-500' :
                              status === 'local' ? 'bg-blue-500' :

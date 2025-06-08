@@ -4,11 +4,9 @@ import Layout from '@components/Layout'
 import { createVideoCallService, createVideoCallServiceWithFallback } from '../util/index.js'
 import { PeerConnectionDiagnostics } from '../util/diagnostics.js'
 
-// Import PeerJS and Socket.IO properly
 import Peer from 'peerjs'
 import io from 'socket.io-client'
 
-// Make them globally available for the utility classes
 if (typeof window !== 'undefined') {
   window.Peer = Peer
   window.io = io
@@ -41,23 +39,19 @@ export default function VideoCall() {
   const messagesEndRef = useRef(null)
 
   useEffect(() => {
-    // Get room ID from URL or generate one
     const urlParams = new URLSearchParams(window.location.search)
     const urlRoomId = urlParams.get('room') || `room-${Date.now()}`
     setRoomId(urlRoomId)
     
-    // Auto-initialize the call like Google Meet
     initializeCall(urlRoomId)
   }, [])
 
-  // Set up preview video when stream becomes available
   useEffect(() => {
     if (previewStream && previewVideoRef.current && isInPreview) {
       previewVideoRef.current.srcObject = previewStream
     }
   }, [previewStream, isInPreview])
 
-  // Clean up preview video when leaving preview mode
   useEffect(() => {
     if (!isInPreview && previewVideoRef.current) {
       previewVideoRef.current.srcObject = null
@@ -68,36 +62,44 @@ export default function VideoCall() {
     try {
       setInitializationStep('Getting camera access...')
       
-      // Step 1: Get camera access first for preview
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       
-      // Mute the preview stream by default
       const audioTrack = stream.getAudioTracks()[0]
       if (audioTrack) {
-        audioTrack.enabled = false // Start muted
-        console.log('🔇 Preview audio muted by default')
+        console.log('🔇 Preview audio track details:', {
+          label: audioTrack.label,
+          enabled: audioTrack.enabled,
+          readyState: audioTrack.readyState,
+          kind: audioTrack.kind
+        })
+        console.log('🔇 Preview audio track is enabled:', audioTrack.enabled)
+      } else {
+        console.error('❌ No audio track found in preview stream!')
       }
       
       setPreviewStream(stream)
       setIsInPreview(true)
       
-      // Show preview video
       if (previewVideoRef.current) {
         previewVideoRef.current.srcObject = stream
       }
       
       setInitializationStep('Connecting to servers...')
       
-      // Step 2: Check if PeerJS and Socket.IO are available
       if (typeof window !== 'undefined' && (!window.Peer || !window.io)) {
         throw new Error('PeerJS or Socket.IO not loaded properly')
       }
       
       setInitializationStep('Setting up peer connection...')
       
-      // Step 3: Create video call service with current mute state from preview
-      const currentMuteState = previewStream ? !previewStream.getAudioTracks()[0]?.enabled : true
-      console.log('🔇 Passing mute state from preview to business layer:', currentMuteState)
+      const currentMuteState = isMuted
+      
+      console.log('🔇 === MUTE STATE CALCULATION ===')
+      console.log('🔇 Stream exists:', !!stream)
+      console.log('🔇 Audio track exists:', !!stream?.getAudioTracks()[0])
+      console.log('🔇 Calculated mute state (should be opposite of enabled):', currentMuteState)
+      console.log('🔇 Passing mute state to business layer:', currentMuteState)
+      console.log('🔇 === END MUTE STATE CALCULATION ===')
       
       businessRef.current = useFallback 
         ? createVideoCallServiceWithFallback({
@@ -119,34 +121,32 @@ export default function VideoCall() {
       
       setInitializationStep('Getting peer ID...')
       
-      // Step 4: Initialize peer connection and get our user ID
       const peerId = await businessRef.current._initializeAndGetPeerId()
       setCurrentUserId(peerId)
       console.log('✅ Got our peer ID:', peerId)
       
       setInitializationStep('Adding ourselves to participants...')
       
-      // Step 5: Add ourselves to the participants set to prevent duplication
       businessRef.current.addSelfToParticipants(peerId)
       
       setInitializationStep('Joining room...')
       
-      // Step 6: Complete initialization and join room
+      businessRef.current.setMuteStateCallback((muteState) => {
+        console.log('🔄 Business layer notified React of mute state change:', muteState)
+        setIsMuted(muteState)
+      })
+      
       await businessRef.current._completeInitialization()
       
-      // Step 7: Transition to call
       setTimeout(() => {
-        // Sync React state with business layer mute state before transition
         const businessMuteState = businessRef.current?.isMuted ?? true
         setIsMuted(businessMuteState)
         console.log('🔄 Synced React mute state with business layer:', businessMuteState)
         
-        // Clean up preview first
         if (previewVideoRef.current) {
           previewVideoRef.current.srcObject = null
         }
         
-        // Stop and clean up preview stream as it will be handled by the business logic
         if (previewStream) {
           previewStream.getTracks().forEach(track => track.stop())
           setPreviewStream(null)
@@ -155,12 +155,11 @@ export default function VideoCall() {
         setIsInPreview(false)
       setIsInCall(true)
         setIsLoading(false)
-      }, 1500) // Show preview for 1.5 seconds after everything is ready
+      }, 1500) 
       
     } catch (error) {
       console.error('Failed to initialize call:', error)
       
-      // Enhanced error handling for mobile devices
       let errorMessage = 'Failed to join call: '
       
       // Check if this is a mobile-specific error with detailed instructions
@@ -195,10 +194,8 @@ export default function VideoCall() {
     }
   }
 
-  // Cleanup function for component unmount
   useEffect(() => {
     return () => {
-      // Cleanup preview stream on unmount
       if (previewStream) {
         previewStream.getTracks().forEach(track => track.stop())
       }
@@ -220,10 +217,32 @@ export default function VideoCall() {
   }
 
   const handleMuteToggle = () => {
+    console.log('🎤 === MUTE TOGGLE CLICKED ===')
+    console.log('🎤 Current React isMuted state:', isMuted)
+    
     if (businessRef.current) {
+      console.log('🎤 Business layer isMuted before toggle:', businessRef.current.isMuted)
       const muted = businessRef.current.toggleMute()
-      setIsMuted(muted)
+      console.log('🎤 Business layer isMuted after toggle:', muted)
+      
+      setTimeout(() => {
+        if (businessRef.current) {
+          console.log('🎤 Running force audio sync...')
+          businessRef.current.forceAudioSync()
+          
+          // Double-check state synchronization
+          const currentBusinessState = businessRef.current.getCurrentMuteState()
+          console.log('🎤 Final verification - Business mute state:', currentBusinessState)
+          if (isMuted !== currentBusinessState) {
+            console.warn('⚠️ React and business states out of sync! Forcing sync...')
+            setIsMuted(currentBusinessState)
+          }
+        }
+      }, 200) 
+    } else {
+      console.error('❌ No business layer reference available for mute toggle')
     }
+    console.log('🎤 === END MUTE TOGGLE ===')
   }
 
   const handleVideoToggle = () => {
@@ -242,6 +261,8 @@ export default function VideoCall() {
   const handleToggleDebug = () => {
     if (businessRef.current) {
       businessRef.current.toggleDebugOverlays()
+      businessRef.current.debugAudioState()
+      businessRef.current.forceAudioSync()
     }
   }
 
@@ -250,29 +271,24 @@ export default function VideoCall() {
       businessRef.current.sendMessage(newMessage.trim())
       setNewMessage('')
       
-      // Auto-scroll to bottom after sending
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 100)
     }
   }
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
     
-    // Clear unread count when chat is open
     if (isChatOpen) {
       setUnreadCount(0)
     }
   }, [messages, isChatOpen])
 
-  // Handle new message notifications
   useEffect(() => {
     if (!isChatOpen && messages.length > 0) {
-      // Only count new messages (not our own messages)
       const lastMessage = messages[messages.length - 1]
       if (lastMessage && lastMessage.sender !== 'You') {
         setUnreadCount(prev => prev + 1)
@@ -295,7 +311,6 @@ export default function VideoCall() {
     }
   }
 
-  // Preview layout while setting up
   if (isInPreview) {
     return (
       <>
@@ -665,10 +680,12 @@ export default function VideoCall() {
           )}
         </div>
 
+
         {/* Controls - More compact on mobile */}
         <div className="bg-gray-800 p-2 md:p-4">
           <div className="flex items-center justify-center space-x-2 md:space-x-4 flex-wrap">
             {/* Mute Button */}
+            <p>isMuted: {isMuted}</p>
             <button
               onClick={handleMuteToggle}
               className={`p-2 md:p-3 rounded-full transition duration-200 ${

@@ -19,6 +19,11 @@ class VideoCallBusiness {
         this.setMessages = () => {}
         this.setIsRecording = () => {}
         this.setParticipantsCount = () => {}
+        
+        console.log('🎤 === BUSINESS LAYER CONSTRUCTOR ===')
+        console.log('🎤 Initial mute state received:', initialMuteState)
+        console.log('🎤 Business layer isMuted set to:', this.isMuted)
+        console.log('🎤 === END CONSTRUCTOR ===')
     }
 
     static initialize(deps) {
@@ -46,9 +51,26 @@ class VideoCallBusiness {
             
             // Get local stream with mobile optimizations
         this.currentStream = await this.media.getCamera()
-
-            // Mute local audio by default
-            this._applyInitialMuteState()
+        
+        console.log('🎤 Stream obtained, applying initial mute state...')
+        console.log('🎤 Initial mute state value:', this.isMuted)
+        
+        // Mute local audio by default - apply immediately after getting stream
+        this._applyInitialMuteState()
+        
+        // Verify the mute state was applied correctly
+        if (this.currentStream) {
+            const audioTrack = this.currentStream.getAudioTracks()[0]
+            if (audioTrack) {
+                console.log('🎤 Final verification - audio track enabled:', audioTrack.enabled, 'should be:', !this.isMuted)
+                // Force the correct state if there's a mismatch
+                if (audioTrack.enabled === this.isMuted) {
+                    console.log('⚠️ Mute state mismatch detected, correcting...')
+                    audioTrack.enabled = !this.isMuted
+                    console.log('🎤 Corrected audio track enabled to:', audioTrack.enabled)
+                }
+            }
+        }
 
             // Initialize peer first to get our ID
         this.currentPeer = await this.peerBuilder
@@ -688,14 +710,24 @@ class VideoCallBusiness {
     }
 
     toggleMute() {
-        this.isMuted = !this.isMuted
-        const audioTrack = this.currentStream.getAudioTracks()[0]
-        if (audioTrack) {
-            audioTrack.enabled = !this.isMuted
-            console.log(`🎤 Audio ${this.isMuted ? 'muted' : 'unmuted'}`)
+        this.isMuted = this.view.toggleMuteState(this.localPeerId)
+        console.log(`🎤 Toggling mute state to: ${this.isMuted ? 'MUTED' : 'UNMUTED'}`)
+        
+        // Check current stream state
+        if (!this.currentStream) {
+            console.error('❌ No current stream available for mute toggle')
+            return this.isMuted
         }
+                  
+        if (this.muteStateCallback) {
+            console.log('🎤 Notifying React component of mute state change:', this.isMuted)
+            this.muteStateCallback(this.isMuted)
+        }
+        
         return this.isMuted
     }
+    
+   
 
     toggleVideo() {
         this.isVideoOn = !this.isVideoOn
@@ -1219,6 +1251,96 @@ class VideoCallBusiness {
     toggleDebugOverlays() {
         return this.view.toggleAllDebugOverlays()
     }
+    
+    // Get current mute state
+    getCurrentMuteState() {
+        this.isMuted = this.view.getMuteState(this.localPeerId)  
+        return this.isMuted
+    }
+    
+    // Update React component mute state callback
+    setMuteStateCallback(callback) {
+        this.muteStateCallback = callback
+    }
+    
+    // Audio debugging method
+    debugAudioState() {
+        console.log('🎤 === AUDIO STATE DEBUG ===')
+        console.log(`🎤 Business layer mute state: ${this.isMuted}`)
+        console.log(`🎤 Current stream exists: ${!!this.currentStream}`)
+        
+        if (this.currentStream) {
+            const audioTracks = this.currentStream.getAudioTracks()
+            console.log(`🎤 Audio tracks count: ${audioTracks.length}`)
+            
+            audioTracks.forEach((track, index) => {
+                console.log(`🎤 Audio Track ${index}:`, {
+                    label: track.label,
+                    enabled: track.enabled,
+                    readyState: track.readyState,
+                    kind: track.kind,
+                    settings: track.getSettings()
+                })
+                
+                // Check for mismatch
+                const expectedEnabled = !this.isMuted
+                if (track.enabled !== expectedEnabled) {
+                    console.warn(`⚠️ MISMATCH: Track enabled is ${track.enabled} but should be ${expectedEnabled}`)
+                }
+            })
+        }
+        
+        console.log(`🎤 Peer connections count: ${this.peers.size}`)
+        this.peers.forEach((peerData, peerId) => {
+            if (peerData.call && peerData.call.peerConnection) {
+                const pc = peerData.call.peerConnection
+                const senders = pc.getSenders()
+                const audioSender = senders.find(sender => 
+                    sender.track && sender.track.kind === 'audio'
+                )
+                
+                console.log(`🎤 Peer ${peerId} audio sender:`, {
+                    hasSender: !!audioSender,
+                    hasTrack: !!(audioSender && audioSender.track),
+                    trackEnabled: audioSender && audioSender.track ? audioSender.track.enabled : 'N/A'
+                })
+            }
+        })
+        console.log('🎤 === END AUDIO DEBUG ===')
+    }
+    
+    // Force audio state synchronization
+    forceAudioSync() {
+        console.log('🔧 Force syncing audio state...')
+        console.log(`🔧 Target mute state: ${this.isMuted}`)
+        
+        if (!this.currentStream) {
+            console.error('❌ No current stream to sync')
+            return false
+        }
+        
+        const audioTracks = this.currentStream.getAudioTracks()
+        if (audioTracks.length === 0) {
+            console.error('❌ No audio tracks to sync')
+            return false
+        }
+        
+        let syncedTracks = 0
+        audioTracks.forEach((track, index) => {
+            const expectedEnabled = !this.isMuted
+            console.log(`🔧 Track ${index}: current=${track.enabled}, target=${expectedEnabled}`)
+            
+            if (track.enabled !== expectedEnabled) {
+                track.enabled = expectedEnabled
+                console.log(`🔧 Corrected track ${index} enabled to: ${track.enabled}`)
+                syncedTracks++
+            }
+        })
+        
+     
+        console.log(`✅ Force audio sync completed. ${syncedTracks} tracks corrected.`)
+        return true
+    }
 
     // Force update all participant stats (called when peer network changes)
     _updateAllParticipantStats() {
@@ -1394,17 +1516,33 @@ class VideoCallBusiness {
     // Apply initial mute state to local stream
     _applyInitialMuteState() {
         console.log('🔇 Applying initial mute state:', this.isMuted)
-        if (this.currentStream) {
-            const audioTrack = this.currentStream.getAudioTracks()[0]
-            if (audioTrack) {
-                audioTrack.enabled = !this.isMuted
-                console.log(`🔇 Local audio ${this.isMuted ? 'muted' : 'unmuted'} on initialization`)
-            } else {
-                console.warn('⚠️ No audio track found to apply mute state')
-            }
-        } else {
+        
+        if (!this.currentStream) {
             console.warn('⚠️ No current stream available to apply mute state')
+            return
         }
+        
+        const audioTracks = this.currentStream.getAudioTracks()
+        console.log(`🔇 Found ${audioTracks.length} audio tracks for initial mute state`)
+        
+        if (audioTracks.length === 0) {
+            console.warn('⚠️ No audio tracks found to apply mute state')
+            return
+        }
+        
+        const audioTrack = audioTracks[0]
+        console.log(`🔇 Initial audio track details:`, {
+            label: audioTrack.label,
+            enabled: audioTrack.enabled,
+            readyState: audioTrack.readyState,
+            kind: audioTrack.kind
+        })
+        
+        // Apply the mute state
+        audioTrack.enabled = !this.isMuted
+        
+        console.log(`🔇 Local audio ${this.isMuted ? 'MUTED' : 'UNMUTED'} on initialization`)
+        console.log(`🔇 Audio track enabled set to: ${audioTrack.enabled}`)
     }
 
     _setupPingMeasurement(peerId, call) {
