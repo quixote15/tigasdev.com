@@ -80,7 +80,7 @@ class VideoCallBusiness {
             .setOnPeerStreamReceived(this.onPeerStreamReceived())
                 .setOnCallError(this.onCallError())
                 .setOnCallClose(this.onCallClose())
-                .build()
+            .build()
 
             // Ensure we have a valid peer ID
             if (!this.currentPeer || !this.currentPeer.id) {

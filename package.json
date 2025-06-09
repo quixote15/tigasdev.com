@@ -13,6 +13,7 @@
     "@next/font": "^14.2.15",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "firebase": "^11.9.0",
     "gray-matter": "^4.0.3",
     "highlight.js": "^11.10.0",
     "markdown-it": "^14.1.0",

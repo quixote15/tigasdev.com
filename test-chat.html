@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Test</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Chat Test</h1>
+    <div id="messages" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+    </div>
+    <input type="text" id="messageInput" placeholder="Type a message..." style="width: 300px; padding: 8px;">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    
+    <script>
+        let socket = null;
+        const roomId = 'test-room-123';
+        const userId = 'test-user-' + Math.random().toString(36).substr(2, 9);
+        
+        function connect() {
+            socket = io('https://signaling-server.tigasdev.com', {
+                withCredentials: false,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 2000
+            });
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                addMessage(`Connected to server with ID: ${socket.id}`);
+                
+                // Join the room
+                socket.emit('join-room', roomId, userId);
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                addMessage('Disconnected from server');
+            });
+            
+            socket.on('new-message', (message) => {
+                console.log('Received message:', message);
+                addMessage(`${message.userId}: ${message.message} (${new Date(message.timestamp).toLocaleTimeString()})`);
+            });
+            
+            socket.on('user-connected', (userId) => {
+                console.log('User connected:', userId);
+                addMessage(`User connected: ${userId}`);
+            });
+            
+            socket.on('user-disconnected', (userId) => {
+                console.log('User disconnected:', userId);
+                addMessage(`User disconnected: ${userId}`);
+            });
+            
+            socket.on('error', (error) => {
+                console.error('Socket error:', error);
+                addMessage(`Error: ${error.message}`);
+            });
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (socket && message) {
+                socket.emit('send-message', { message: message });
+                input.value = '';
+            }
+        }
+        
+        function addMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Handle Enter key
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
