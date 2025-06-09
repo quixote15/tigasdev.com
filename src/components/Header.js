@@ -15,7 +15,6 @@ export default function Header({ title }) {
       <Link href="/articles" className="text-white font-mono text-lg hover:text-grape">Articles</Link>
       <Link href="/notes" className="text-white font-mono text-lg hover:text-grape">Notes</Link>
       <Link key={'projects'} href='/projects' className="text-white font-mono text-lg hover:text-grape">Projects</Link>
-      <Link href="/meet" className="text-white font-mono text-lg hover:text-grape">Meet</Link>
       <Link href="/contact" className="text-white font-mono text-lg hover:text-grape">Contact</Link>
 
     </nav>
