@@ -26,7 +26,7 @@ export const createVideoCallService = ({
     // Primary config - your custom server
     const customPeerConfig = {
         host: 'peer-server.tigasdev.com',
-        port: 80,
+        port: 443,
         path: '/',
         secure: true,
         debug: 3, // Increased debug level
