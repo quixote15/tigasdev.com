@@ -153,10 +153,10 @@ class VideoCallBusiness {
             this.view.addVideoStream(this.localPeerId, this.currentStream, true, this.peers.size)
             
             // Start monitoring local stats
-            this._startLocalMonitoring()
+            //this._startLocalMonitoring()
             
             // Start socket monitoring for peer-socket sync
-            this._startSocketMonitoring()
+            //this._startSocketMonitoring()
             
             // Join the room now that everything is set up
             console.log('📡 Emitting join-room event...')
@@ -441,7 +441,8 @@ class VideoCallBusiness {
             this.view.updateConnectionStatus(callerId, 'connected')
             
             // Start monitoring this peer connection
-            this._startPeerMonitoring(callerId, call)
+            // for now this is not helping 
+            // this._startPeerMonitoring(callerId, call)
             
             // Force update all participant stats when network changes
             setTimeout(() => {
@@ -461,14 +462,15 @@ class VideoCallBusiness {
                 code: error.code
             })
             
-                                // Remove failed peer to avoid confusion
-                    if (this.peers.has(call.peer)) {
-                        const peerData = this.peers.get(call.peer)
-                        if (peerData.call === call) {
-                            this.peers.delete(call.peer)
-                            this.setParticipantsCount(this.peers.size)
-                        }
-                    }
+                    // Remove failed peer to avoid confusion
+                    // For now I am not removing the peer to see what happens
+                    // if (this.peers.has(call.peer)) {
+                    //     const peerData = this.peers.get(call.peer)
+                    //     if (peerData.call === call) {
+                    //         this.peers.delete(call.peer)
+                    //         this.setParticipantsCount(this.peers.size)
+                    //     }
+                    // }
             
             // Handle specific error types
             if (error.type === 'peer-unavailable') {
