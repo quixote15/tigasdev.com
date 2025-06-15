@@ -28,7 +28,7 @@ export const createVideoCallService = ({
         host: 'peer-server.tigasdev.com',
         port: 80,
         path: '/',
-        secure: false,
+        secure: true,
         debug: 3, // Increased debug level
         key: 'Bkiv2sHChaglEQOr50OjlOFMEE8ObzW2URwpC00iWsY',
         config: {
