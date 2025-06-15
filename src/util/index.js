@@ -38,9 +38,9 @@ export const createVideoCallService = ({
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 {
-                    urls: process.env.TURN_SERVER_URL, 
-                    username: process.env.TURN_SERVER_USER, // Replace with your TURN username
-                    credential: process.env.STUN_SERVER_PASSWORD // Replace with your TURN password
+                    urls: process.env.NEXT_PUBLIC_TURN_SERVER_URL, 
+                    username: process.env.NEXT_PUBLIC_TURN_SERVER_USER, // Replace with your TURN username
+                    credential: process.env.NEXT_PUBLIC_TURN_SERVER_PASSWORD // Replace with your TURN password
                 }
             ],
             iceCandidatePoolSize: 10
