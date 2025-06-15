@@ -33,10 +33,10 @@ export const createVideoCallService = ({
         key: 'Bkiv2sHChaglEQOr50OjlOFMEE8ObzW2URwpC00iWsY',
         config: {
             iceServers: [
-                // { urls: 'stun:stun.l.google.com:19302' },
-                // { urls: 'stun:global.stun.twilio.com:3478' },
-                // { urls: 'stun:stun1.l.google.com:19302' },
-                // { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
                 {
                     urls: process.env.TURN_SERVER_URL, 
                     username: process.env.TURN_SERVER_USER, // Replace with your TURN username
@@ -48,20 +48,20 @@ export const createVideoCallService = ({
     }
 
     // Fallback config - PeerJS cloud service
-    const fallbackPeerConfig = {
-        debug: 3,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
-            ],
-            iceCandidatePoolSize: 10
-        }
-    }
+    // const fallbackPeerConfig = {
+    //     debug: 3,
+    //     config: {
+    //         iceServers: [
+    //             { urls: 'stun:stun.l.google.com:19302' },
+    //             { urls: 'stun:global.stun.twilio.com:3478' },
+    //             { urls: 'stun:stun1.l.google.com:19302' },
+    //             { urls: 'stun:stun2.l.google.com:19302' },
+    //             { urls: 'stun:stun3.l.google.com:19302' },
+    //             { urls: 'stun:stun4.l.google.com:19302' }
+    //         ],
+    //         iceCandidatePoolSize: 10
+    //     }
+    // }
 
     // Use provided config or default to custom config
     const finalPeerConfig = peerConfig || customPeerConfig
@@ -75,7 +75,6 @@ export const createVideoCallService = ({
     const socketBuilder = new SocketBuilder({ socketUrl })
     const peerBuilder = new PeerBuilder({ 
         peerConfig: [finalPeerConfig],
-        fallbackConfig: [fallbackPeerConfig]
     })
 
     // Create and configure the video call business
