@@ -33,10 +33,15 @@ export const createVideoCallService = ({
         key: 'Bkiv2sHChaglEQOr50OjlOFMEE8ObzW2URwpC00iWsY',
         config: {
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:global.stun.twilio.com:3478' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                // { urls: 'stun:stun.l.google.com:19302' },
+                // { urls: 'stun:global.stun.twilio.com:3478' },
+                // { urls: 'stun:stun1.l.google.com:19302' },
+                // { urls: 'stun:stun2.l.google.com:19302' },
+                {
+                    urls: process.env.TURN_SERVER_URL, 
+                    username: process.env.TURN_SERVER_USER, // Replace with your TURN username
+                    credential: process.env.STUN_SERVER_PASSWORD // Replace with your TURN password
+                }
             ],
             iceCandidatePoolSize: 10
         }
